@@ -128,11 +128,11 @@ function shouldBlockRequest(url) {
 
 async function getPage() {
   if (!browser) {
-    setProgress("브라우저", "브라우저 초기화", 3, "Cloudflare 우회를 위해 헤드풀(Headful) 모드로 시작합니다.");
+    // 진행 상황을 표시하는 함수가 없다면 console.log로 대체하거나 상황에 맞게 수정하세요.
+    console.log("브라우저 초기화: Cloudflare 우회를 위해 헤드풀(Headful) 모드로 시작합니다.");
     
-    // 로컬 환경 테스트 시 headless: true 필수
     browser = await chromium.launch({
-      headless: true, 
+      headless: false, 
       args: [
         "--disable-blink-features=AutomationControlled",
         "--start-maximized",
@@ -157,7 +157,7 @@ async function getPage() {
 
     await page.route("**/*", async route => {
       const request = route.request();
-      if (shouldBlockRequest(request.url())) {
+      if (typeof shouldBlockRequest === 'function' && shouldBlockRequest(request.url())) {
         await route.abort();
         return;
       }
