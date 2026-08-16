@@ -325,17 +325,19 @@ app.post("/api/generate", async (req, res) => {
 
 주제: ${topic}
 스타일: ${style}
-분량: ${length}
+분량: ${length} (※ 블로그 본문 및 쇼츠 자막 모두 절대로 짧게 작성하지 말고, 방대한 분량과 풍부한 디테일·서사를 담아 매우 길고 상세하게 작성할 것)
 
 [필수 작성 규칙]
 1. 사실 확인된 데이터만 사용하여 작성할 것 (추측이나 허위 사실 생성 금지).
 2. [블로그용 생성 규칙]
    - 결과물은 HTML 태그를 적극 활용하여 구성할 것.
-   - 소제목은 '<h2>', 중제목은 '<h3>' 태그를 사용하며, CSS 또는 기본 스타일을 통해 폰트가 굵고(bold) 크게 표시되도록 구성할 것 (예: '<h2 style="font-size:24px; font-weight:bold;">소제목</h2>').
+   - 소제목은 '<h2>', 중제목은 '<h3>' 태그를 사용하며, 폰트가 굵고(bold) 크게 표시되도록 스타일을 지정할 것 (예: '<h2 style="font-size:24px; font-weight:bold;">소제목</h2>').
+   - 내용이 짧지 않도록 각 섹션마다 상세하고 풍부한 본문 내용을 길게 작성할 것.
    - 붙여넣은 데이터에 소제목이 많은 경우, 하위에 '<h3>' 중제목을 적극적으로 만들어 구조화할 것.
-   - 내용 흐름과 맥락에 맞게 적절히 이미지 태그('<img src="[이미지URL]" alt="...">')를 배치할 것 (이미지 URL 자리에 지정된 플레이스홀더 또는 적절한 위치 지정).
+   - 내용 흐름과 맥락에 맞게 적절히 이미지 태그('<img src="[이미지URL]" alt="...">')를 배치할 것.
    - 자극적인 내용은 빼지 말고 흥미를 유발할 수 있도록 생생하게 반영할 것.
 3. [쇼츠용 자막 생성 규칙]
+   - 내용이 너무 짧지 않도록 충분한 분량과 상세한 스토리라인을 가질 것.
    - 처음 시작 부분은 무조건 시청자의 이목을 집중시키고 강력하게 후킹할 수 있는 **자극적이고 파격적인 내용**으로 시작할 것.
 
 수정/참고 자료:
@@ -365,23 +367,25 @@ ${research || "(없음)"}`;
     const attached = attachImages(data, docs);
     data = attached.data;
 
-    // 블로그 HTML 형식 조합 (소제목, 중제목 굵고 크게 적용 및 이미지 포함)
-    let htmlBlogContent = `<h1 style="font-size:28px; font-weight:bold; margin-bottom:20px;">${escHtml(data.title)}</h1>\n`;
-    htmlBlogContent += `<p style="font-size:16px; line-height:1.6;">${escHtml(data.summary)}</p><br>\n`;
+    // 블로그 HTML 형식 조합 (렌더링 뷰에서 코드가 아닌 구현된 모습으로 보이도록 구성, 분량 대폭 확대)
+    let htmlBlogContent = `<div style="font-family: Arial, sans-serif; color: #20242b; padding: 10px;">`;
+    htmlBlogContent += `<h1 style="font-size:30px; font-weight:bold; margin-bottom:20px; line-height:1.3;">${escHtml(data.title)}</h1>\n`;
+    htmlBlogContent += `<p style="font-size:16px; line-height:1.7; margin-bottom:25px; color:#444;">${escHtml(data.summary)}</p><hr style="border:0; border-top:1px solid #e3e7ed; margin:20px 0;">\n`;
 
     for (const s of (data.blogSections || [])) {
       if (s.depth === 2) {
-        htmlBlogContent += `<h3 style="font-size:20px; font-weight:bold; margin-top:20px; margin-bottom:10px;">${escHtml(s.heading)}</h3>\n`;
+        htmlBlogContent += `<h3 style="font-size:20px; font-weight:bold; margin-top:24px; margin-bottom:12px; color:#111;">${escHtml(s.heading)}</h3>\n`;
       } else {
-        htmlBlogContent += `<h2 style="font-size:24px; font-weight:bold; margin-top:30px; margin-bottom:15px;">${escHtml(s.heading)}</h2>\n`;
+        htmlBlogContent += `<h2 style="font-size:25px; font-weight:bold; margin-top:35px; margin-bottom:15px; color:#000;">${escHtml(s.heading)}</h2>\n`;
       }
       
       if (s.imageUrl) {
-        htmlBlogContent += `<div style="margin:15px 0;"><img src="${s.imageUrl}" alt="${escHtml(s.heading)}" style="max-width:100%; height:auto; border-radius:8px;"></div>\n`;
+        htmlBlogContent += `<div style="margin:20px 0; text-align:center;"><img src="${s.imageUrl}" alt="${escHtml(s.heading)}" style="max-width:100%; height:auto; border-radius:10px; box-shadow:0 4px 12px rgba(0,0,0,0.1);"></div>\n`;
       }
 
-      htmlBlogContent += `<p style="font-size:15px; line-height:1.7;">${escHtml(s.body)}</p><br>\n`;
+      htmlBlogContent += `<p style="font-size:16px; line-height:1.8; margin-bottom:20px; color:#333;">${escHtml(s.body)}</p>\n`;
     }
+    htmlBlogContent += `</div>`;
 
     data.blog = htmlBlogContent;
 
