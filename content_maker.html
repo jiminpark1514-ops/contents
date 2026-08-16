@@ -2,40 +2,133 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
 <title>콘텐츠 메이커</title>
 <style>
-body{background:#f5f7fb;padding:20px;font-family:sans-serif}
-.card{background:#fff;padding:20px;border-radius:10px;margin-bottom:20px}
-textarea, .result-area{width:100%;padding:10px;border:1px solid #ddd;border-radius:5px}
+*{box-sizing:border-box}body{margin:0;background:#f5f7fb;color:#20242b;font-family:Arial,"Noto Sans KR",sans-serif}.wrap{max-width:1180px;margin:auto;padding:24px 16px 60px}.card{background:#fff;border:1px solid #e3e7ed;border-radius:16px;padding:18px;margin:12px 0}.row{display:flex;gap:8px}.grow{flex:1}input,select,textarea{width:100%;border:1px solid #d7dce3;border-radius:10px;padding:11px;font-size:14px}textarea{line-height:1.65;resize:vertical}button{border:0;border-radius:10px;padding:10px 14px;font-weight:700;cursor:pointer}.primary{background:#20242b;color:#fff}.secondary{background:#edf0f4}.muted{font-size:12px;color:#707783}.status{font-size:13px;margin-top:9px;white-space:pre-wrap}.ok{color:#147a3d}.err{color:#b00020}.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}.paste-area{min-height:220px;max-height:400px;overflow-y:auto;border:1px solid #d7dce3;border-radius:10px;padding:14px;background:#fff;outline:none;line-height:1.65}.paste-area img{max-width:100%;height:auto;border-radius:8px;margin:8px 0}.imgs{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin-top:10px}.img{border:2px solid transparent;border-radius:10px;overflow:hidden}.img img{width:100%;aspect-ratio:16/10;object-fit:cover}.badge{display:inline-block;padding:5px 8px;border-radius:99px;background:#eef2ff;font-size:11px;margin:3px}@media(max-width:780px){.grid2{grid-template-columns:1fr}.imgs{grid-template-columns:repeat(2,1fr)}}
 </style>
 </head>
 <body>
-<h1>⚡ 콘텐츠 메이커</h1>
+<div class="wrap">
+<h1>⚡ 콘텐츠 메이커 (붙여넣기 버전)</h1>
+<p class="muted">나무위키 페이지 내용을 복사(`Ctrl+C`)하여 아래 편집기에 그대로 붙여넣기(`Ctrl+V`) 하세요. (텍스트 및 이미지 자동 인식)</p>
+
+<div class="card"><div class="row"><b class="grow">🔌 서버 상태</b><button class="secondary" onclick="health()">확인</button></div><div id="health" class="status">확인 중...</div></div>
+
 <div class="card">
-  <textarea id="pasteBox" rows="5" placeholder="내용을 붙여넣으세요..."></textarea>
-  <button onclick="generate()">생성하기</button>
+  <b>① 나무위키 자료 붙여넣기 (텍스트 + 이미지)</b>
+  <div class="muted" style="margin-bottom:8px">아래 박스를 클릭하고 Ctrl+V로 붙여넣으세요.</div>
+  <div id="pasteBox" class="paste-area" contenteditable="true" placeholder="이곳에 나무위키 내용을 복사·붙여넣기 하세요..."></div>
 </div>
+
 <div class="card">
-  <div id="blog" class="result-area" style="white-space:pre-wrap;"></div>
+  <b>② AI 작성 스타일</b>
+  <div class="grid2" style="margin-top:9px">
+    <select id="style">
+      <option>네이버 블로그형</option>
+      <option>뉴스·기사형</option>
+      <option>흥미로운 스토리형</option>
+      <option>팩트체크형</option>
+      <option>연예 이슈형</option>
+    </select>
+    <select id="length">
+      <option>짧게</option>
+      <option selected>보통</option>
+      <option>길게</option>
+    </select>
+  </div>
+</div>
+
+<div class="card"><textarea id="extra" rows="3" placeholder="추가로 반영할 내용이나 강조할 포인트가 있으면 입력하세요."></textarea></div>
+
+<div class="card">
+  <button class="primary" style="width:100%;font-size:16px" onclick="generate()">🔎 붙여넣은 자료로 블로그·쇼츠 만들기</button>
+  <div id="status" class="status">자료를 붙여넣고 버튼을 누르세요.</div>
+</div>
+
+<div class="grid2">
+  <div class="card"><div class="row"><b class="grow">📝 블로그</b><button class="secondary" onclick="copy('blog')">복사</button></div><textarea id="blog" rows="32"></textarea></div>
+  <div class="card"><div class="row"><b class="grow">📱 쇼츠 자막</b><button class="secondary" onclick="copy('shorts')">복사</button></div><textarea id="shorts" rows="32"></textarea><div id="hash"></div></div>
+</div>
+
+<div class="card"><b>🖼 인식된 이미지 목록</b><div id="extractedImgs" class="imgs"><div class="muted">아직 인식된 이미지가 없습니다.</div></div></div>
 </div>
 
 <script>
-async function generate(){
-  const text = document.getElementById("pasteBox").value;
-  const res = await fetch("/api/generate", {
-    method: "POST",
-    headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({
-      topic: "직접 붙여넣은 자료",
-      style: "자극적이고 흥미로운 스토리형",
-      length: "보통",
-      sourceText: text,
-      docs: []
-    })
-  });
-  const data = await res.json();
-  document.getElementById("blog").innerHTML = `<h1><b>${data.title}</b></h1>` + data.blog;
+const $=id=>document.getElementById(id);
+
+async function health(){
+  try{
+    const r=await fetch("/api/health");
+    const d=await r.json();
+    $("health").className="status "+(d.apiKeyConfigured?"ok":"err");
+    $("health").textContent=(d.apiKeyConfigured?"✅":"❌")+" 서버 연결 / API 키 "+(d.apiKeyConfigured?"인식":"없음");
+  }catch(e){$("health").textContent="❌ "+e.message}
 }
+
+async function generate(){
+  const pasteBox = $("pasteBox");
+  const textContent = pasteBox.innerText.trim();
+  const extraContent = $("extra").value.trim();
+
+  // 붙여넣은 내용이 너무 짧은 경우 예외 처리
+  if(!textContent || textContent.length < 20){
+    return alert("나무위키 내용을 붙여넣어 주세요.");
+  }
+
+  // 본문 텍스트와 추가 요청사항을 서버가 인식하는 sourceText 하나로 병합
+  let finalSourceText = textContent;
+  if(extraContent) {
+      finalSourceText += `\n\n[사용자 추가 요청사항]\n${extraContent}`;
+  }
+
+  // 이미지 추출 및 렌더링
+  const imgs = Array.from(pasteBox.querySelectorAll("img")).map(img => ({
+    src: img.src,
+    alt: img.alt || ""
+  }));
+
+  if(imgs.length > 0){
+    $("extractedImgs").innerHTML = imgs.map(img => `<div class="img"><img src="${img.src}"><div class="muted" style="font-size:10px;padding:4px">${img.alt || '이미지'}</div></div>`).join("");
+  } else {
+    $("extractedImgs").innerHTML = `<div class="muted">인식된 이미지가 없습니다. (텍스트 위주로 생성됩니다)</div>`;
+  }
+
+  try {
+    $("status").textContent="🤖 AI가 붙여넣은 자료를 분석하여 블로그와 쇼츠를 작성 중입니다...";
+    
+    // 서버가 요구하는 파라미터(topic, style, length, sourceText, docs) 형식에 맞춤
+    const r = await fetch("/api/generate", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        topic: "직접 붙여넣은 자료",
+        style: $("style").value,
+        length: $("length").value,
+        sourceText: finalSourceText, // 해결 핵심 부분: 서버가 인식하도록 변경됨
+        docs: [] // 검색이 아니므로 빈 배열 전달
+      })
+    });
+
+    const d = await r.json();
+    if(!r.ok || !d.ok) throw Error(d.error || "생성 실패");
+
+    $("blog").value = (d.title ? d.title + "\n\n" : "") + (d.blog || "");
+    $("shorts").value = (d.shorts || []).map(x => `[${x.time}]\n${x.text}`).join("\n\n");
+    $("hash").innerHTML = (d.hashtags || []).map(x => `<span class="badge">${esc(x)}</span>`).join("");
+    
+    $("status").className = "status ok";
+    $("status").textContent = "✅ 콘텐츠 생성 완료!";
+  } catch(e) {
+    $("status").className = "status err";
+    $("status").textContent = "❌ " + e.message;
+    alert("오류 발생:\n\n" + e.message);
+  }
+}
+
+function copy(id){navigator.clipboard.writeText($(id).value).then(()=>alert("복사했습니다."))}
+function esc(x){return String(x??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"}[m]))}
+health();
 </script>
 </body>
 </html>
