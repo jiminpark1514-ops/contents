@@ -20,7 +20,7 @@ app.use(express.json({ limit: "20mb" }));
 app.use(express.static(__dirname));
 app.use("/collected_images", express.static(IMAGE_DIR));
 
-// Render에서 루트 주소(/)로 접속하면 콘텐츠 메이커 화면을 표시한다.
+// Render에서 루트 주소(/)로 접속하면 메인 화면을 바로 표시
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "content_maker.html"));
 });
@@ -338,12 +338,12 @@ async function searchNamu(keyword, topic, keywordIndex, keywordTotal) {
 
   setProgress("문서 검색", `검색어 ${keywordIndex}/${keywordTotal}`, base, `나무위키 검색 URL로 바로 접속: ${keyword}`);
 
-  // 검색창/placeholder locator에 의존하지 않고 검색결과 URL로 직접 접근한다.
   const searchUrl = `https://namu.wiki/Search?q=${encodeURIComponent(keyword)}`;
   await p.goto(searchUrl, { waitUntil: "domcontentloaded", timeout: 30000 });
   await p.waitForTimeout(800);
 
-  setProgress("문서 검색", `검색결과 분석 ${keywordIndex}/${keywordTotal}`, base + 2, `검색창 없이 검색결과를 직접 분석하고 광고/외부 링크를 제외하는 중: ${keyword}`);
+  setProgress("문서 검색", `검색결과 분석 ${keywordIndex}/${keywordTotal}`, base + 2, `검색 결과 링크를 추출하고 광고/외부 링크를 제외하는 중: ${keyword}`);
+  await p.locator('a[href^="/w/"]').first().waitFor({ state: "visible", timeout: 15000 });
 
   let links = await getSearchLinks(p);
   const needle = String(topic || "").trim().toLowerCase();
@@ -360,7 +360,7 @@ async function searchNamu(keyword, topic, keywordIndex, keywordTotal) {
   });
 
   if (!candidates.length && needle) {
-    setProgress("문서 검색", `주제 재검색 ${keywordIndex}/${keywordTotal}`, base + 4, `주제 포함 결과가 없어 '${keyword} ${topic}' 검색결과를 직접 다시 불러오는 중`);
+    setProgress("문서 검색", `주제 재검색 ${keywordIndex}/${keywordTotal}`, base + 4, `주제 포함 결과가 없어 '${keyword} ${topic}' 검색결과를 직접 확인하는 중`);
     const topicSearchUrl = `https://namu.wiki/Search?q=${encodeURIComponent(`${keyword} ${topic}`)}`;
     await p.goto(topicSearchUrl, { waitUntil: "domcontentloaded", timeout: 30000 });
     await p.waitForTimeout(800);
@@ -369,10 +369,6 @@ async function searchNamu(keyword, topic, keywordIndex, keywordTotal) {
       const text = (x.text + " " + x.title).toLowerCase();
       return !isAdLine(x.text) && text.includes(key) && text.includes(needle);
     });
-  }
-
-  if (!candidates.length) {
-    candidates = links.filter(x => (x.text + " " + x.title).toLowerCase().includes(key));
   }
 
   if (!candidates.length) {
