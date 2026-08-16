@@ -732,7 +732,12 @@ app.post("/api/namu-search", async (req, res) => {
   resetProgress();
   try {
     const { keywords = [], topic = "논란" } = req.body || {};
-    if (!Array.isArray(keywords) || !keywords.length) return res.status(400).json({ ok: false, error: "검색어를 입력해주세요." });
+    
+    // 검색어가 없으면 에러 대신 빈 배열을 반환하여 다음 단계로 진행되도록 처리
+    if (!Array.isArray(keywords) || !keywords.length) {
+      setProgress("수집 건너뜀", "자료 직접 입력 모드", 50, "검색어가 없어 나무위키 수집을 생략하고 붙여넣은 자료로 진행합니다.");
+      return res.json({ ok: true, docs: [] });
+    }
 
     const docs = [];
     const total = Math.min(keywords.length, 5);
@@ -742,7 +747,7 @@ app.post("/api/namu-search", async (req, res) => {
       docs.push(await namuResearch(keyword, topic, i + 1, total));
     }
 
-    setProgress("수집 완료", "AI 입력자료 준비", 73, `문서 ${docs.length}개 · 전체 목차/본문/이미지 수집 완료. 광고와 여담은 제외했습니다.`);
+    setProgress("수집 완료", "AI 입력자료 준비", 73, `문서 ${docs.length}개 · 전체 목차/본문/이미지 수집 완료.`);
     res.json({ ok: true, docs });
   } catch (e) {
     console.error("NAMU:", e);
