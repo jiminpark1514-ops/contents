@@ -83,7 +83,6 @@ function finishProgress(ok, detail) {
 
 /* =========================================================
    브라우저: 완전 백그라운드
-   Playwright는 headless=true이면 창을 띄우지 않는다.
 ========================================================= */
 let browser = null;
 let page = null;
@@ -128,17 +127,17 @@ function shouldBlockRequest(url) {
 
 async function getPage() {
   if (!browser) {
-    // 진행 상황을 표시하는 함수가 없다면 console.log로 대체하거나 상황에 맞게 수정하세요.
-    console.log("브라우저 초기화: Cloudflare 우회를 위해 헤드풀(Headful) 모드로 시작합니다.");
+    console.log("브라우저 초기화: 서버 환경에 맞춰 headless 모드로 시작합니다.");
     
     browser = await chromium.launch({
-      headless: true, // GitHub Actions 환경에서는 반드시 true여야 합니다.
+      headless: true,
       args: [
         "--disable-blink-features=AutomationControlled",
         "--start-maximized",
         "--no-sandbox",
         "--disable-setuid-sandbox",
         "--disable-infobars",
+        "--disable-dev-shm-usage",
         "--window-size=1440,1000"
       ]
     });
@@ -219,11 +218,6 @@ function cleanAdText(text) {
     .trim();
 }
 
-function isYeoDam(title = "") {
-  const t = String(title).toLowerCase().replace(/\s+/g, "");
-  return t.includes("여담");
-}
-
 function absoluteUrl(src = "") {
   if (!src) return "";
   if (src.startsWith("//")) return "https:" + src;
@@ -285,7 +279,6 @@ async function downloadImage(originalUrl, index, total) {
     if (!contentType.toLowerCase().startsWith("image/")) return null;
 
     const buffer = Buffer.from(await response.arrayBuffer());
-    // 광고/오류 페이지가 image/*로 반환되는 경우도 있어 너무 작은 파일은 버린다.
     if (!buffer.length || buffer.length < 1024) return null;
 
     const ext = getImageExtension(contentType, url);
@@ -346,10 +339,7 @@ async function searchNamu(keyword, topic, keywordIndex, keywordTotal) {
     throw new Error("나무위키 검색어가 비어 있습니다.");
   }
 
-  // 검색창/검색버튼을 사용하지 않고 문서 URL로 직접 접속한다.
-  const url =
-    "https://namu.wiki/w/" +
-    encodeURIComponent(cleanKeyword);
+  const url = "https://namu.wiki/w/" + encodeURIComponent(cleanKeyword);
 
   setProgress(
     "문서 검색",
@@ -363,9 +353,10 @@ async function searchNamu(keyword, topic, keywordIndex, keywordTotal) {
     timeout: 30000
   });
 
-  // Cloudflare 검증 페이지 감지 시 수동으로 풀 수 있도록 잠시 대기 시간 부여
   await p.waitForTimeout(3000);
 
+  const currentUrl = p.url();
+  const title = await p.title().catch(() => cleanKeyword);
   const securityText = await p.locator("body").innerText().catch(() => "");
   const securityCombined = `${title}\n${securityText}`;
 
@@ -376,32 +367,19 @@ async function searchNamu(keyword, topic, keywordIndex, keywordTotal) {
     /verify you are human/i.test(securityCombined) ||
     (/cloudflare/i.test(securityCombined) && /verification/i.test(securityCombined))
   ) {
-    // headless: false 상태일 때 브라우저 창에서 사용자가 직접 체크박스를 누를 수 있도록 15초 유예 시간 제공
-    console.log("[안내] Cloudflare 보안 검증이 감지되었습니다. 15초 동안 브라우저 창에서 직접 인증을 완료해주세요.");
-    await p.waitForTimeout(15000);
-  }{
-    throw new Error(
-      `나무위키가 Cloudflare 보안검증 페이지를 반환했습니다. ` +
-      `자동 크롤링으로 본문을 가져오지 못했습니다. ` +
-      `현재 URL: ${currentUrl}`
-    );
+    console.log("[안내] Cloudflare 보안 검증이 감지되었습니다.");
+    await p.waitForTimeout(10000);
   }
 
-  // 실제 문서 본문이 로딩될 시간을 조금 준다.
   await p.waitForTimeout(1500);
 
   const bodyText = await p.locator("body").innerText().catch(() => "");
   if (!bodyText || bodyText.trim().length < 100) {
-    throw new Error(
-      `나무위키 문서 본문이 비어 있습니다. URL: ${currentUrl}`
-    );
+    throw new Error(`나무위키 문서 본문이 비어 있습니다. URL: ${currentUrl}`);
   }
 
-  // 실제 문서 URL인지 확인한다.
   if (!/https:\/\/namu\.wiki\/w\//i.test(currentUrl)) {
-    throw new Error(
-      `나무위키 문서 URL로 이동하지 못했습니다. 현재 URL: ${currentUrl}`
-    );
+    throw new Error(`나무위키 문서 URL로 이동하지 못했습니다. 현재 URL: ${currentUrl}`);
   }
 
   setProgress(
@@ -509,8 +487,6 @@ async function extractDocument(p, keyword, chosen, url, keywordIndex, keywordTot
     const allImages = [];
     const imageSeen = new Set();
 
-    // 이미지 자체의 alt/title만 보는 것이 아니라
-    // 이미지가 들어있는 링크/부모 영역의 텍스트까지 확인해 광고를 걸러낸다.
     function isBadImageContext(img) {
       const alt = clean(img.getAttribute("alt") || "");
       const title = clean(img.getAttribute("title") || "");
@@ -524,22 +500,18 @@ async function extractDocument(p, keyword, chosen, url, keywordIndex, keywordTot
 
       const combined = `${alt} ${title} ${cls} ${parentCls} ${grandCls} ${parentText} ${grandText}`;
 
-      // 광고/쇼핑/UI 이미지
       if (/광고|배너|파워링크|쿠팡|와우회원|로켓배송|로켓프레시|무료배송|첫구매|할인|추천상품|상품구매|쇼핑|상세내용아이콘|상세내용|더보기아이콘|공유아이콘|아이콘/i.test(combined)) {
         return true;
       }
 
-      // 광고 링크 또는 나무위키 외부 링크에 걸린 썸네일은 수집하지 않는다.
       const link = img.closest("a");
       const href = link?.getAttribute("href") || "";
       if (href && /^https?:\/\//i.test(href) && !/namu\.wiki/i.test(href)) return true;
 
-      // 광고 영역으로 흔히 쓰이는 클래스/속성
       if (/advert|ad[-_]?banner|adbox|adsense|sponsor|powerlink|shopping|commerce|promotion|promo|affiliate/i.test(`${cls} ${parentCls} ${grandCls}`)) {
         return true;
       }
 
-      // 이미지 주변 텍스트가 명백한 쇼핑 광고 문구인 경우
       if (/쿠팡|와우회원|로켓배송|무료배송|첫구매|할인|구매하기|광고|파워링크/i.test(`${parentText} ${grandText}`)) {
         return true;
       }
@@ -559,7 +531,6 @@ async function extractDocument(p, keyword, chosen, url, keywordIndex, keywordTot
       const height = Number(img.getAttribute("height") || 0);
       if (width && height && width < 100 && height < 70) return;
 
-      // 작은 UI 아이콘/버튼 이미지는 제외한다.
       const role = String(img.getAttribute("role") || "").toLowerCase();
       if (role === "button" || img.closest("button")) return;
 
@@ -862,7 +833,7 @@ ${sourceText || "(없음)"}
 수집자료:
 ${research}`;
 
-    setProgress("AI 작성", "OpenAI 요청 중", 82, "구조화된 JSON 형식으로 블로그/쇼츠를 작성하고 있습니다. 화면은 멈춘 것이 아니라 AI 응답을 기다리는 중입니다.");
+    setProgress("AI 작성", "OpenAI 요청 중", 82, "구조화된 JSON 형식으로 블로그/쇼츠를 작성하고 있습니다.");
 
     const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY, timeout: 120000, maxRetries: 0 });
     const response = await client.responses.create({
