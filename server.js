@@ -219,9 +219,6 @@ function buildResearch(docs) {
   return docs.map(doc => `문서 제목: ${doc.title}\n본문: ${doc.text}`).join("\n\n");
 }
 
-function normalizeSection(v) { return String(v || "").replace(/^s-/i, "").trim(); }
-function normalize(v) { return String(v || "").toLowerCase().replace(/\s+/g, "").trim(); }
-
 function attachImages(data, docs) {
   const allImages = [];
   for (const doc of docs) {
@@ -317,7 +314,9 @@ app.post("/api/generate", async (req, res) => {
   resetProgress();
   try {
     const { topic = "인물 소개", style = "흥미로운 스토리형", length = "보통", sourceText = "", docs = [] } = req.body || {};
-    if (!process.env.OPENAI_API_KEY) return res.status(500).json({ ok: false, error: "OPENAI_API_KEY가 없습니다." });
+    if (!process.env.OPENAI_API_KEY) {
+      return res.status(500).json({ ok: false, error: "OPENAI_API_KEY가 없습니다." });
+    }
 
     const research = Array.isArray(docs) && docs.length > 0 ? buildResearch(docs) : "";
 
@@ -367,7 +366,6 @@ ${research || "(없음)"}`;
     const attached = attachImages(data, docs);
     data = attached.data;
 
-    // 블로그 HTML 형식 조합 (렌더링 뷰에서 코드가 아닌 구현된 모습으로 보이도록 구성, 분량 대폭 확대)
     let htmlBlogContent = `<div style="font-family: Arial, sans-serif; color: #20242b; padding: 10px;">`;
     htmlBlogContent += `<h1 style="font-size:30px; font-weight:bold; margin-bottom:20px; line-height:1.3;">${escHtml(data.title)}</h1>\n`;
     htmlBlogContent += `<p style="font-size:16px; line-height:1.7; margin-bottom:25px; color:#444;">${escHtml(data.summary)}</p><hr style="border:0; border-top:1px solid #e3e7ed; margin:20px 0;">\n`;
@@ -393,8 +391,14 @@ ${research || "(없음)"}`;
     res.json({ ok: true, ...data });
   } catch (e) {
     finishProgress(false, e.message);
+    // [중요] 에러 발생 시 절대 HTML 문자열을 보내지 않고 무조건 JSON 형태로 반환하여 Uncaught SyntaxError 방지
     res.status(500).json({ ok: false, error: e.message });
   }
+});
+
+// API 경로 외의 요청이 들어왔을 때 HTML 대신 JSON으로 에러 처리 (선택적 안정성 강화)
+app.use("/api/*", (req, res) => {
+  res.status(404).json({ ok: false, error: "존재하지 않는 API 경로입니다." });
 });
 
 function escHtml(str) {
