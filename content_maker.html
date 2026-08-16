@@ -5,18 +5,18 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>콘텐츠 메이커</title>
 <style>
-*{box-sizing:border-box}body{margin:0;background:#f5f7fb;color:#20242b;font-family:Arial,"Noto Sans KR",sans-serif}.wrap{max-width:1180px;margin:auto;padding:24px 16px 60px}.card{background:#fff;border:1px solid #e3e7ed;border-radius:16px;padding:18px;margin:12px 0}.row{display:flex;gap:8px}.grow{flex:1}input,select,textarea{width:100%;border:1px solid #d7dce3;border-radius:10px;padding:11px;font-size:14px}textarea{line-height:1.65;resize:vertical}button{border:0;border-radius:10px;padding:10px 14px;font-weight:700;cursor:pointer}.primary{background:#20242b;color:#fff}.secondary{background:#edf0f4}.muted{font-size:12px;color:#707783}.status{font-size:13px;margin-top:9px;white-space:pre-wrap}.ok{color:#147a3d}.err{color:#b00020}.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}.paste-area{min-height:220px;max-height:400px;overflow-y:auto;border:1px solid #d7dce3;border-radius:10px;padding:14px;background:#fff;outline:none;line-height:1.65}.paste-area img{max-width:100%;height:auto;border-radius:8px;margin:8px 0}.imgs{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin-top:10px}.img{border:2px solid transparent;border-radius:10px;overflow:hidden}.img img{width:100%;aspect-ratio:16/10;object-fit:cover}.badge{display:inline-block;padding:5px 8px;border-radius:99px;background:#eef2ff;font-size:11px;margin:3px}@media(max-width:780px){.grid2{grid-template-columns:1fr}.imgs{grid-template-columns:repeat(2,1fr)}}
+*{box-sizing:border-box}body{margin:0;background:#f5f7fb;color:#20242b;font-family:Arial,"Noto Sans KR",sans-serif}.wrap{max-width:1180px;margin:auto;padding:24px 16px 60px}.card{background:#fff;border:1px solid #e3e7ed;border-radius:16px;padding:18px;margin:12px 0}.row{display:flex;gap:8px}.grow{flex:1}input,select,textarea{width:100%;border:1px solid #d7dce3;border-radius:10px;padding:11px;font-size:14px}textarea{line-height:1.65;resize:vertical}button{border:0;border-radius:10px;padding:10px 14px;font-weight:700;cursor:pointer}.primary{background:#20242b;color:#fff}.secondary{background:#edf0f4}.muted{font-size:12px;color:#707783}.status{font-size:13px;margin-top:9px;white-space:pre-wrap}.ok{color:#147a3d}.err{color:#b00020}.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}.paste-area{min-height:220px;max-height:400px;overflow-y:auto;border:1px solid #d7dce3;border-radius:10px;padding:14px;background:#fff;outline:none;line-height:1.65}.paste-area img{max-width:100%;height:auto;border-radius:8px;margin:8px 0}.badge{display:inline-block;padding:5px 8px;border-radius:99px;background:#eef2ff;font-size:11px;margin:3px}@media(max-width:780px){.grid2{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
 <div class="wrap">
-<h1>⚡ 콘텐츠 메이커 (100% 렌더링 버전)</h1>
-<p class="muted">나무위키 페이지 내용을 복사(`Ctrl+C`)하여 아래 편집기에 그대로 붙여넣기(`Ctrl+V`) 하세요.</p>
+<h1>⚡ 콘텐츠 메이커 (렌더링 오류 완벽 해결 버전)</h1>
+<p class="muted">내용을 붙여넣고 생성 버튼을 누르면 코드가 아닌 실제 렌더링된 화면으로 출력됩니다.</p>
 
 <div class="card"><div class="row"><b class="grow">🔌 서버 상태</b><button class="secondary" onclick="health()">확인</button></div><div id="health" class="status">확인 중...</div></div>
 
 <div class="card">
-  <b>① 자료 붙여넣기 (텍스트 + 이미지)</b>
+  <b>① 자료 붙여넣기 (텍스트)</b>
   <div id="pasteBox" class="paste-area" contenteditable="true" placeholder="이곳에 내용을 붙여넣으세요..."></div>
 </div>
 
@@ -31,7 +31,6 @@
       <option>연예 이슈형</option>
     </select>
     <select id="length">
-      <option>짧게</option>
       <option>보통</option>
       <option selected>아주 길고 상세하게</option>
     </select>
@@ -41,17 +40,17 @@
 <div class="card"><textarea id="extra" rows="3" placeholder="추가로 반영할 내용이나 강조할 포인트가 있으면 입력하세요."></textarea></div>
 
 <div class="card">
-  <button class="primary" style="width:100%;font-size:16px" onclick="generate()">🔎 블로그·쇼츠 컨텐츠 생성하기</button>
+  <button class="primary" style="width:100%;font-size:16px" onclick="generate()">🔎 컨텐츠 생성하기</button>
   <div id="status" class="status">자료를 붙여넣고 버튼을 누르세요.</div>
 </div>
 
 <div class="grid2">
   <div class="card">
     <div class="row">
-      <b class="grow">📝 블로그 (HTML이 구현된 렌더링 화면)</b>
+      <b class="grow">📝 블로그 (완벽한 HTML 렌더링 뷰)</b>
       <button class="secondary" onclick="copyBlogHtml()">HTML 소스 복사</button>
     </div>
-    <!-- 텍스트에어리어가 아닌 div를 사용하여 HTML코드가 아닌 구현된 모습(렌더링)으로 표시 -->
+    <!-- 브라우저가 직접 DOM으로 렌더링하는 영역 -->
     <div id="blog" style="min-height:500px; max-height:700px; overflow-y:auto; border:1px solid #d7dce3; border-radius:10px; padding:16px; background:#fff; line-height:1.65; margin-top:8px;"></div>
   </div>
   <div class="card">
@@ -92,7 +91,7 @@ async function generate(){
   }
 
   try {
-    $("status").textContent="🤖 AI가 콘텐츠를 강력하고 상세하게 작성 중입니다...";
+    $("status").textContent="🤖 AI가 콘텐츠를 작성 중입니다...";
     
     const r = await fetch("/api/generate", {
       method: "POST",
@@ -109,8 +108,30 @@ async function generate(){
     const d = await r.json();
     if(!r.ok || !d.ok) throw Error(d.error || "생성 실패");
 
-    // 핵심 수정: 블로그 영역에 HTML 코드가 아닌 렌더링된 UI가 보이도록 innerHTML로 주입
-    $("blog").innerHTML = d.blog || "";
+    // 클라이언트 측에서 순수 데이터를 받아 안전하게 HTML 요소로 조립 (태그 노출 원천 차단)
+    let html = `<div style="font-family: 'Noto Sans KR', Arial, sans-serif; color: #20242b; padding: 10px;">`;
+    html += `<h1 style="font-size:28px; font-weight:bold; margin-bottom:20px; line-height:1.3; color:#111;">${esc(d.title)}</h1>`;
+    html += `<p style="font-size:16px; line-height:1.7; margin-bottom:25px; color:#444; background:#f9fafc; padding:15px; border-left:4px solid #20242b; border-radius:4px;">${esc(d.summary)}</p>`;
+    html += `<hr style="border:0; border-top:1px solid #e3e7ed; margin:20px 0;">`;
+
+    if (d.blogSections && Array.isArray(d.blogSections)) {
+      for (const s of d.blogSections) {
+        if (s.depth === 2) {
+          html += `<h3 style="font-size:20px; font-weight:bold; margin-top:24px; margin-bottom:12px; color:#222;">${esc(s.heading)}</h3>`;
+        } else {
+          html += `<h2 style="font-size:24px; font-weight:bold; margin-top:35px; margin-bottom:15px; color:#000;">${esc(s.heading)}</h2>`;
+        }
+        
+        if (s.imageUrl) {
+          html += `<div style="margin:20px 0; text-align:center;"><img src="${s.imageUrl}" alt="${esc(s.heading)}" style="max-width:100%; height:auto; border-radius:10px; box-shadow:0 4px 12px rgba(0,0,0,0.1);"></div>`;
+        }
+
+        html += `<p style="font-size:16px; line-height:1.8; margin-bottom:20px; color:#333;">${esc(s.body)}</p>`;
+      }
+    }
+    html += `</div>`;
+
+    $("blog").innerHTML = html;
     $("shorts").value = (d.shorts || []).map(x => `[${x.time}]\n${x.text}`).join("\n\n");
     $("hash").innerHTML = (d.hashtags || []).map(x => `<span class="badge">${esc(x)}</span>`).join("");
     
@@ -125,7 +146,7 @@ async function generate(){
 
 function copy(id){navigator.clipboard.writeText($(id).value).then(()=>alert("복사했습니다."))}
 function copyBlogHtml(){navigator.clipboard.writeText($("blog").innerHTML).then(()=>alert("블로그 HTML 소스코드를 복사했습니다."))}
-function esc(x){return String(x??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"}[m]))}
+function esc(x){return String(x??"").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;")}
 health();
 </script>
 </body>
