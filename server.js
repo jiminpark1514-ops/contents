@@ -700,6 +700,32 @@ async function getSearchLinks(p) {
     );
 }
 
+
+async function clickNamuSearchButton(p) {
+  const pathD = "M438.6 278.6c12.5-12.5 12.5-32.8 0-45.3l-160-160c-12.5-12.5-32.8-12.5-45.3 0s-12.5 32.8 0 45.3L338.8 224 32 224c-17.7 0-32 14.3-32 32s14.3 32 32 32l306.7 0L233.4 393.4c-12.5 12.5-12.5 32.8 0 45.3s32.8 12.5 45.3 0l160-160z";
+  const candidates = [
+    `button:has(path[d="${pathD}"])`,
+    `a:has(path[d="${pathD}"])`,
+    'button[aria-label*="검색"]',
+    'button[title*="검색"]',
+    'a[title="검색"]',
+    'button:has(svg)'
+  ];
+
+  for (const selector of candidates) {
+    const button = p.locator(selector).first();
+    try {
+      await button.waitFor({ state: "visible", timeout: 2500 });
+      if (await button.isEnabled().catch(() => true)) {
+        await button.click();
+        return true;
+      }
+    } catch {}
+  }
+
+  return false;
+}
+
 async function searchNamu(
   keyword,
   topic,
@@ -811,9 +837,10 @@ async function searchNamu(
     keyword
   );
 
-  await input.press(
-    "Enter"
-  );
+  const clicked = await clickNamuSearchButton(p);
+  if (!clicked) {
+    throw new Error("나무위키 검색 버튼을 찾지 못했습니다. 검색창 옆의 검색 버튼 구조가 변경되었을 수 있습니다.");
+  }
 
   await p.waitForTimeout(
     900
@@ -906,9 +933,10 @@ async function searchNamu(
       `${keyword} ${topic}`
     );
 
-    await input.press(
-      "Enter"
-    );
+    const retryClicked = await clickNamuSearchButton(p);
+    if (!retryClicked) {
+      throw new Error("나무위키 재검색 버튼을 찾지 못했습니다.");
+    }
 
     await p.waitForTimeout(
       900
@@ -2261,6 +2289,104 @@ app.get(
 
 app.post(
   "/api/namu-search",
+  async (req, res) => {
+    resetProgress();
+
+    try {
+      const {
+        keywords = [],
+        topic = "논란"
+      } = req.body || {};
+
+      if (
+        !Array.isArray(
+          keywords
+        ) ||
+        !keywords.length
+      ) {
+        return res
+          .status(400)
+          .json({
+            ok: false,
+
+            error:
+              "검색어를 입력해주세요."
+          });
+      }
+
+      const docs =
+        [];
+
+      const total =
+        Math.min(
+          keywords.length,
+          5
+        );
+
+      for (
+        let i = 0;
+        i < total;
+        i++
+      ) {
+        const keyword =
+          String(
+            keywords[i] ||
+              ""
+          ).trim();
+
+        if (!keyword) {
+          continue;
+        }
+
+        docs.push(
+          await namuResearch(
+            keyword,
+            topic,
+            i + 1,
+            total
+          )
+        );
+      }
+
+      setProgress(
+        "수집 완료",
+        "AI 입력자료 준비",
+        73,
+        `문서 ${docs.length}개 · 전체 목차/본문/이미지 수집 완료. 광고와 여담은 제외했습니다.`
+      );
+
+      res.json({
+        ok: true,
+        docs
+      });
+    } catch (e) {
+      console.error(
+        "NAMU:",
+        e
+      );
+
+      finishProgress(
+        false,
+        e.message ||
+          String(e)
+      );
+
+      res
+        .status(500)
+        .json({
+          ok: false,
+
+          error:
+            e.message ||
+            String(e)
+        });
+    }
+  }
+);
+
+// 구버전 HTML 호환: /api/namu-crawl도 동일한 브라우저 수집 기능을 사용합니다.
+app.post(
+  "/api/namu-crawl",
   async (req, res) => {
     resetProgress();
 
