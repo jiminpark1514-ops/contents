@@ -199,6 +199,21 @@ function selectedTopic(){
   return $("custom").value.trim()||topic;
 }
 
+async function readJsonResponse(response, endpoint){
+  const text=await response.text();
+  const contentType=(response.headers.get("content-type")||"").toLowerCase();
+
+  try{
+    return JSON.parse(text);
+  }catch(e){
+    const preview=text.replace(/\s+/g," ").slice(0,180);
+    if(text.trim().startsWith("<!DOCTYPE") || text.trim().startsWith("<html") || contentType.includes("text/html")){
+      throw new Error(`${endpoint}가 JSON 대신 HTML을 반환했습니다. HTTP ${response.status}. 현재 배포된 서버에 API가 연결되지 않았습니다. 응답: ${preview}`);
+    }
+    throw new Error(`${endpoint} 응답을 JSON으로 읽지 못했습니다. HTTP ${response.status}. 응답: ${preview}`);
+  }
+}
+
 async function generate(){
 
   if(!kws.length){
@@ -214,7 +229,7 @@ async function generate(){
 
   try{
 
-    const nr=await fetch("/api/namu-search",{
+    const nr=await fetch("/api/namu-crawl",{
       method:"POST",
       headers:{
         "Content-Type":"application/json"
@@ -225,7 +240,7 @@ async function generate(){
       })
     });
 
-    const nd=await nr.json();
+    const nd=await readJsonResponse(nr,"/api/namu-crawl");
 
     if(!nr.ok||!nd.ok){
       throw Error(
@@ -253,7 +268,7 @@ async function generate(){
       })
     });
 
-    const d=await r.json();
+    const d=await readJsonResponse(r,"/api/generate");
 
     if(!r.ok||!d.ok){
       throw Error(
