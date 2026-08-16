@@ -365,10 +365,17 @@ async function searchNamu(keyword, topic, keywordIndex, keywordTotal) {
     /this website uses a security service/i.test(securityCombined) ||
     /checking your browser/i.test(securityCombined) ||
     /verify you are human/i.test(securityCombined) ||
-    (/cloudflare/i.test(securityCombined) && /verification/i.test(securityCombined))
+    (/cloudflare/i.test(securityCombined) && /verification/i.test(securityCombined)) ||
+    /확인에 성공했습니다/i.test(securityCombined)
   ) {
-    console.log("[안내] Cloudflare 보안 검증이 감지되었습니다.");
-    await p.waitForTimeout(10000);
+    console.log("[안내] Cloudflare 보안 검증 통과 감지. 실제 문서 로딩을 대기합니다.");
+    
+    // 검증 후 실제 나무위키 문서 본문 영역이 나타날 때까지 최대 15초간 대기
+    try {
+      await p.waitForSelector("main, article, div[class*='wiki-content']", { timeout: 15000 });
+    } catch {
+      await p.waitForTimeout(5000);
+    }
   }
 
   await p.waitForTimeout(1500);
