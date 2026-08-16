@@ -363,7 +363,7 @@ async function searchNamu(keyword, topic, keywordIndex, keywordTotal) {
     timeout: 30000
   });
 
-  await p.waitForTimeout(1200);
+  await p.waitForTimeout(3000);
 
   const currentUrl = p.url();
   const title = await p.title().catch(() => "");
