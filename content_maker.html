@@ -68,20 +68,26 @@ async function health(){
 
 async function generate(){
   const pasteBox = $("pasteBox");
-  const htmlContent = pasteBox.innerHTML.trim();
   const textContent = pasteBox.innerText.trim();
+  const extraContent = $("extra").value.trim();
 
+  // 붙여넣은 내용이 너무 짧은 경우 예외 처리
   if(!textContent || textContent.length < 20){
     return alert("나무위키 내용을 붙여넣어 주세요.");
   }
 
-  // 이미지 추출
+  // 본문 텍스트와 추가 요청사항을 서버가 인식하는 sourceText 하나로 병합
+  let finalSourceText = textContent;
+  if(extraContent) {
+      finalSourceText += `\n\n[사용자 추가 요청사항]\n${extraContent}`;
+  }
+
+  // 이미지 추출 및 렌더링
   const imgs = Array.from(pasteBox.querySelectorAll("img")).map(img => ({
     src: img.src,
     alt: img.alt || ""
   }));
 
-  // 이미지 미리보기 렌더링
   if(imgs.length > 0){
     $("extractedImgs").innerHTML = imgs.map(img => `<div class="img"><img src="${img.src}"><div class="muted" style="font-size:10px;padding:4px">${img.alt || '이미지'}</div></div>`).join("");
   } else {
@@ -91,16 +97,16 @@ async function generate(){
   try {
     $("status").textContent="🤖 AI가 붙여넣은 자료를 분석하여 블로그와 쇼츠를 작성 중입니다...";
     
+    // 서버가 요구하는 파라미터(topic, style, length, sourceText, docs) 형식에 맞춤
     const r = await fetch("/api/generate", {
       method: "POST",
       headers: {"Content-Type": "application/json"},
       body: JSON.stringify({
-        html: htmlContent,
-        text: textContent,
-        images: imgs,
+        topic: "직접 붙여넣은 자료",
         style: $("style").value,
         length: $("length").value,
-        extra: $("extra").value
+        sourceText: finalSourceText, // 해결 핵심 부분: 서버가 인식하도록 변경됨
+        docs: [] // 검색이 아니므로 빈 배열 전달
       })
     });
 
