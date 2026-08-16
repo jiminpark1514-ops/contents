@@ -803,41 +803,38 @@ const contentSchema = {
 };
 
 app.post("/api/generate", async (req, res) => {
+  resetProgress();
   try {
-    const { keywords = [], topic = "인물 소개", style = "흥미로운 스토리형", length = "보통", sourceText = "", docs = [] } = req.body || {};
-    if (!keywords.length) return res.status(400).json({ ok: false, error: "검색어를 입력해주세요." });
+    const { topic = "인물 소개", style = "흥미로운 스토리형", length = "보통", sourceText = "", docs = [] } = req.body || {};
     if (!process.env.OPENAI_API_KEY) return res.status(500).json({ ok: false, error: "OPENAI_API_KEY가 없습니다." });
-    if (!Array.isArray(docs) || !docs.length) return res.status(400).json({ ok: false, error: "수집된 나무위키 자료가 없습니다." });
+    if (!sourceText.trim() && (!Array.isArray(docs) || !docs.length)) {
+      return res.status(400).json({ ok: false, error: "생성할 자료가 없습니다." });
+    }
 
-    setProgress("AI 작성", "자료 정리", 76, "수집된 전체 목차와 본문을 AI 입력자료로 묶는 중입니다.");
-    const research = buildResearch(docs);
-    setProgress("AI 작성", "프롬프트 구성", 78, `AI에 전달할 자료 ${research.length.toLocaleString()}자 · 세부 목차까지 포함`);
+    setProgress("AI 작성", "프롬프트 구성", 78, "붙여넣은 자료를 바탕으로 AI 프롬프트를 구성합니다.");
+
+    const research = Array.isArray(docs) && docs.length > 0 ? buildResearch(docs) : "";
 
     const prompt = `너는 한국 연예·사회·역사 이슈 전문 콘텐츠 작가다.
 
-검색어: ${keywords.join(", ")}
 주제: ${topic}
 스타일: ${style}
 분량: ${length}
 
-아래 수집자료를 바탕으로 블로그와 쇼츠를 작성하라.
+아래 제공된 자료를 바탕으로 블로그와 쇼츠를 작성하라.
 
 규칙:
 1. 자료에 없는 사실을 만들지 않는다.
-2. 원본의 중요한 세부 목차와 사건을 임의로 생략하지 않는다.
-3. 여담 목차는 사용하지 않는다.
-4. 의혹/주장/반론은 사실과 구분한다.
-5. 조상의 행적과 후손 개인의 행위를 동일시하지 않는다.
-6. 블로그 각 section에는 원본 목차 번호를 sourceSection으로 기록한다.
-7. 3.6, 5.1.1 같은 세부 목차도 중요한 내용이면 반드시 반영한다.
-8. 이미지는 프로그램이 수집해서 연결하므로 imageUrl/imageQuery를 만들지 않는다.
-9. 출력은 반드시 지정된 JSON 구조만 사용한다.
+2. 의혹/주장/반론은 사실과 구분한다.
+3. 블로그 각 section에는 출처 또는 관련 내용을 sourceSection으로 기록한다.
+4. 이미지는 프로그램이 수집해서 연결하므로 imageUrl을 직접 만들지 않는다.
+5. 출력은 반드시 지정된 JSON 구조만 사용한다.
 
-추가 자료:
+수정/참고 자료:
 ${sourceText || "(없음)"}
 
 수집자료:
-${research}`;
+${research || "(없음)"}`;
 
     setProgress("AI 작성", "OpenAI 요청 중", 82, "구조화된 JSON 형식으로 블로그/쇼츠를 작성하고 있습니다.");
 
@@ -856,7 +853,7 @@ ${research}`;
       max_tokens: 12000
     });
 
-    setProgress("AI 작성", "AI 응답 수신", 91, "AI 응답을 받았습니다. JSON 구조를 검증하고 이미지 위치를 연결합니다.");
+    setProgress("AI 작성", "AI 응답 수신", 91, "AI 응답을 받았습니다. JSON 구조를 검증합니다.");
     const raw = (response.choices[0]?.message?.content || "").trim();
     if (!raw) throw new Error("AI가 빈 결과를 반환했습니다.");
 
@@ -867,7 +864,6 @@ ${research}`;
       throw new Error("AI 구조화 결과를 JSON으로 읽지 못했습니다. 다시 생성해주세요.");
     }
 
-    setProgress("AI 작성", "이미지 연결", 95, "각 블로그 소제목과 가장 가까운 원문 이미지를 연결하는 중입니다.");
     const attached = attachImages(data, docs);
     data = attached.data;
     data.images = attached.allImages;
@@ -889,7 +885,7 @@ ${research}`;
       images: doc.images || []
     }));
 
-    finishProgress(true, `완료 · 블로그 ${data.blogSections.length}개 소제목 · 이미지 ${data.images.length}개 연결`);
+    finishProgress(true, `완료 · 블로그 ${data.blogSections.length}개 소제목 생성 완료`);
     res.json({ ok: true, ...data });
   } catch (e) {
     console.error("AI:", e);
