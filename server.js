@@ -331,244 +331,65 @@ async function searchNamu(keyword, topic, keywordIndex, keywordTotal) {
   const p = await getPage();
   const base = 5 + Math.round(((keywordIndex - 1) / Math.max(keywordTotal, 1)) * 10);
 
+  // 나무위키 검색창/검색버튼을 사용하지 않고
+  // 입력한 검색어를 바로 문서 URL로 만들어 접속한다.
+  // 예: 삼성전자 -> https://namu.wiki/w/삼성전자
+  const cleanKeyword = String(keyword || "").trim();
+  if (!cleanKeyword) {
+    throw new Error("검색어가 비어 있습니다.");
+  }
+
+  const url = `https://namu.wiki/w/${encodeURIComponent(cleanKeyword)}`;
+
   setProgress(
     "문서 검색",
-    `검색어 ${keywordIndex}/${keywordTotal}`,
+    `문서 ${keywordIndex}/${keywordTotal}`,
     base,
-    `나무위키 메인 페이지 접속 후 검색창을 찾는 중: ${keyword}`
+    `나무위키 문서 직접 접속: ${cleanKeyword}`
   );
 
-  // 중요: 검색창이 실제로 존재하는 나무위키 메인 페이지로 직접 접속한다.
-  // 기존 코드처럼 /w/나무위키:대문으로 들어가면 현재 사이트의 SPA 검색 UI가
-  // 렌더링되지 않는 경우가 있어 검색창을 찾지 못할 수 있다.
-  await p.goto("https://namu.wiki/", {
+  const response = await p.goto(url, {
     waitUntil: "domcontentloaded",
     timeout: 30000
   });
 
-  // Vue SPA가 검색창을 렌더링할 시간을 충분히 준다.
-  try {
-    await p.waitForLoadState("networkidle", { timeout: 10000 });
-  } catch {}
+  await p.waitForTimeout(1000);
 
-  const searchSelector = 'input[type="search"][placeholder="여기에서 검색"]';
-  let input = null;
+  const status = response ? response.status() : 0;
+  const finalUrl = p.url();
+  const title = await p.title().catch(() => "");
 
-  try {
-    await p.locator(searchSelector).first().waitFor({
-      state: "visible",
-      timeout: 20000
-    });
-    input = p.locator(searchSelector).first();
-  } catch {}
-
-  // placeholder가 조금 달라진 경우를 위한 보조 탐색.
-  if (!input) {
-    const searchCandidates = [
-      'input[type="search"]',
-      'input[placeholder*="검색"]',
-      'input[name="search"]',
-      'input[aria-label*="검색"]'
-    ];
-
-    for (const selector of searchCandidates) {
-      const candidate = p.locator(selector).first();
-      try {
-        await candidate.waitFor({ state: "visible", timeout: 3000 });
-        if (await candidate.isEditable()) {
-          input = candidate;
-          break;
-        }
-      } catch {}
-    }
-  }
-
-  if (!input) {
-    // 최종적으로 현재 페이지의 모든 visible input 중 편집 가능한 것을 찾는다.
-    const editable = p.locator('input:visible');
-    const count = await editable.count();
-    for (let i = 0; i < count; i++) {
-      const candidate = editable.nth(i);
-      try {
-        if (await candidate.isEditable()) {
-          input = candidate;
-          break;
-        }
-      } catch {}
-    }
-  }
-
-  if (!input) {
-    const title = await p.title().catch(() => "");
-    const url = p.url();
-    const bodyText = await p.locator("body").innerText().catch(() => "");
-    const diagnostic = bodyText.replace(/\s+/g, " ").trim().slice(0, 300);
+  // HTTP 404이거나 오류 페이지인 경우 명확하게 알려준다.
+  if (status === 404 || /(?:404|존재하지 않는 문서|문서를 찾을 수 없습니다)/i.test(title)) {
     throw new Error(
-      `나무위키 메인 페이지에 검색창이 렌더링되지 않았습니다. ` +
-      `URL=${url}, TITLE=${title}, PAGE=${diagnostic || "본문 없음"}`
+      `나무위키 문서를 찾지 못했습니다.\n검색어: ${cleanKeyword}\n접속 URL: ${url}\nHTTP: ${status || "확인불가"}`
     );
   }
 
-  setProgress(
-    "문서 검색",
-    `검색어 입력 ${keywordIndex}/${keywordTotal}`,
-    base + 1,
-    `검색창에 '${keyword}' 입력`
-  );
-
-  await input.fill(keyword);
-
-  // 사용자가 확인한 실제 검색 버튼의 SVG path를 우선 클릭한다.
-  // 현재 버튼의 path d 값이 변경되더라도 aria/title/role 후보를 순차적으로 시도한다.
-  const searchButtonPath = 'path[d^="M438.6 278.6"]';
-  let clicked = false;
-
-  const buttonSelectors = [
-    `button:has(${searchButtonPath})`,
-    `[role="button"]:has(${searchButtonPath})`,
-    `a:has(${searchButtonPath})`,
-    'button[aria-label*="검색"]',
-    'button[title*="검색"]',
-    '[role="button"][aria-label*="검색"]',
-    '[role="button"][title*="검색"]'
-  ];
-
-  for (const selector of buttonSelectors) {
-    const button = p.locator(selector).first();
-    try {
-      await button.waitFor({ state: "visible", timeout: 2000 });
-      if (await button.isEnabled().catch(() => true)) {
-        await button.click({ timeout: 5000 });
-        clicked = true;
-        break;
-      }
-    } catch {}
-  }
-
-  // 버튼 구조가 div/svg로 되어 있는 경우 path 자체를 클릭한다.
-  if (!clicked) {
-    const pathLocator = p.locator(searchButtonPath).first();
-    try {
-      await pathLocator.waitFor({ state: "visible", timeout: 2000 });
-      await pathLocator.click({ timeout: 5000 });
-      clicked = true;
-    } catch {}
-  }
-
-  // 최후의 fallback: 검색창 Enter.
-  if (!clicked) {
-    await input.press("Enter");
-  }
-
-  // 검색 결과 SPA 렌더링 대기.
-  await p.waitForTimeout(1200);
-
-  setProgress(
-    "문서 검색",
-    `검색결과 분석 ${keywordIndex}/${keywordTotal}`,
-    base + 2,
-    `검색 결과 링크를 추출하고 광고/외부 링크를 제외하는 중: ${keyword}`
-  );
-
-  try {
-    await p.locator('a[href^="/w/"]').first().waitFor({
-      state: "visible",
-      timeout: 15000
-    });
-  } catch {
-    // 검색 결과 링크가 SPA 내부 구조로 늦게 생성될 수 있어 한 번 더 기다린다.
-    await p.waitForTimeout(2500);
-  }
-
-  let links = await getSearchLinks(p);
-  const needle = String(topic || "").trim().toLowerCase();
-  const key = String(keyword).trim().toLowerCase();
-
-  links = links.filter(x => {
-    const text = (x.text + " " + x.title).toLowerCase();
-    return !isAdLine(x.text) && text.includes(key);
-  });
-
-  let candidates = links.filter(x => {
-    const text = (x.text + " " + x.title).toLowerCase();
-    return needle && text.includes(needle);
-  });
-
-  if (!candidates.length && needle) {
-    setProgress(
-      "문서 검색",
-      `주제 재검색 ${keywordIndex}/${keywordTotal}`,
-      base + 4,
-      `주제 포함 결과가 없어 '${keyword} ${topic}'으로 다시 찾는 중`
-    );
-
-    await input.fill(`${keyword} ${topic}`);
-
-    let clickedAgain = false;
-    for (const selector of buttonSelectors) {
-      const button = p.locator(selector).first();
-      try {
-        await button.waitFor({ state: "visible", timeout: 1500 });
-        if (await button.isEnabled().catch(() => true)) {
-          await button.click({ timeout: 4000 });
-          clickedAgain = true;
-          break;
-        }
-      } catch {}
-    }
-
-    if (!clickedAgain) {
-      const pathLocator = p.locator(searchButtonPath).first();
-      try {
-        await pathLocator.waitFor({ state: "visible", timeout: 1500 });
-        await pathLocator.click({ timeout: 4000 });
-        clickedAgain = true;
-      } catch {}
-    }
-
-    if (!clickedAgain) await input.press("Enter");
-    await p.waitForTimeout(1200);
-
-    const more = await getSearchLinks(p);
-    candidates = more.filter(x => {
-      const text = (x.text + " " + x.title).toLowerCase();
-      return !isAdLine(x.text) && text.includes(key) && text.includes(needle);
-    });
-  }
-
-  if (!candidates.length) {
-    candidates = links.filter(x =>
-      (x.text + " " + x.title).toLowerCase().includes(key)
+  // 나무위키가 문서명으로 리다이렉트한 경우 최종 URL을 사용한다.
+  if (!finalUrl.includes("/w/")) {
+    throw new Error(
+      `나무위키 문서 페이지로 이동하지 못했습니다.\n검색어: ${cleanKeyword}\n현재 URL: ${finalUrl}`
     );
   }
 
-  if (!candidates.length) {
-    throw new Error(`'${keyword}' 검색 결과를 찾지 못했습니다.`);
-  }
-
-  candidates.sort((a, b) => {
-    const score = x => {
-      const text = (x.text + " " + x.title).toLowerCase();
-      let n = 0;
-      if (text === key) n += 100;
-      if (text.includes(key)) n += 30;
-      if (needle && text.includes(needle)) n += 70;
-      return n;
-    };
-    return score(b) - score(a);
-  });
-
-  const chosen = candidates[0];
-  const url = new URL(chosen.href, "https://namu.wiki").href;
+  const chosen = {
+    text: cleanKeyword,
+    title: title || cleanKeyword,
+    href: finalUrl
+  };
 
   setProgress(
     "문서 검색",
     `문서 선택 ${keywordIndex}/${keywordTotal}`,
     base + 5,
-    `선택 문서: ${chosen.text}`
+    `직접 접속한 문서: ${title || cleanKeyword}`
   );
 
-  return { chosen, url };
+  return {
+    chosen,
+    url: finalUrl
+  };
 }
 
 async function extractDocument(p, keyword, chosen, url, keywordIndex, keywordTotal) {
@@ -894,7 +715,7 @@ function attachImages(data, docs) {
    API
 ========================================================= */
 app.get("/api/health", (req, res) => {
-  res.json({ ok: true, apiKeyConfigured: !!process.env.OPENAI_API_KEY, model: MODEL, headless: true, browser: "headless", adFilter: true });
+  res.json({ ok: true, apiKeyConfigured: !!process.env.OPENAI_API_KEY, model: MODEL, headless: true, adFilter: true });
 });
 
 app.get("/api/progress", (req, res) => {
