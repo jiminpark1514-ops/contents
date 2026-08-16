@@ -131,7 +131,7 @@ async function getPage() {
   if (!browser) {
     setProgress("브라우저", "Chrome 창 시작", 3, "나무위키 접속 과정을 화면에 표시합니다.");
     browser = await chromium.launch({
-      headless: false,
+      headless: true,
       args: [
         "--start-maximized",
         "--no-first-run",
