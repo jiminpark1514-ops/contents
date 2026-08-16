@@ -363,12 +363,9 @@ async function searchNamu(keyword, topic, keywordIndex, keywordTotal) {
     timeout: 30000
   });
 
+  // Cloudflare 검증 페이지 감지 시 수동으로 풀 수 있도록 잠시 대기 시간 부여
   await p.waitForTimeout(3000);
 
-  const currentUrl = p.url();
-  const title = await p.title().catch(() => "");
-
-  // Cloudflare 보안검증/챌린지 페이지인지 먼저 확인한다.
   const securityText = await p.locator("body").innerText().catch(() => "");
   const securityCombined = `${title}\n${securityText}`;
 
@@ -377,8 +374,12 @@ async function searchNamu(keyword, topic, keywordIndex, keywordTotal) {
     /this website uses a security service/i.test(securityCombined) ||
     /checking your browser/i.test(securityCombined) ||
     /verify you are human/i.test(securityCombined) ||
-    /cloudflare/i.test(securityCombined) && /verification/i.test(securityCombined)
+    (/cloudflare/i.test(securityCombined) && /verification/i.test(securityCombined))
   ) {
+    // headless: false 상태일 때 브라우저 창에서 사용자가 직접 체크박스를 누를 수 있도록 15초 유예 시간 제공
+    console.log("[안내] Cloudflare 보안 검증이 감지되었습니다. 15초 동안 브라우저 창에서 직접 인증을 완료해주세요.");
+    await p.waitForTimeout(15000);
+  }{
     throw new Error(
       `나무위키가 Cloudflare 보안검증 페이지를 반환했습니다. ` +
       `자동 크롤링으로 본문을 가져오지 못했습니다. ` +
