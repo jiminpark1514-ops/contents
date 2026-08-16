@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>콘텐츠 메이커</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f5f7fb;color:#20242b;font-family:Arial,"Noto Sans KR",sans-serif}.wrap{max-width:1250px;margin:auto;padding:24px 16px 60px}.card{background:#fff;border:1px solid #e3e7ed;border-radius:16px;padding:18px;margin:12px 0}.row{display:flex;gap:8px}.grow{flex:1}input,select,textarea{width:100%;border:1px solid #d7dce3;border-radius:10px;padding:11px;font-size:14px}textarea{line-height:1.7;resize:vertical}button{border:0;border-radius:10px;padding:10px 14px;font-weight:700;cursor:pointer}.primary{background:#20242b;color:#fff}.secondary{background:#edf0f4}.status{font-size:13px;margin-top:9px;white-space:pre-wrap}.ok{color:#147a3d}.err{color:#b00020}.tags{display:flex;gap:7px;flex-wrap:wrap;margin-top:9px}.tag{background:#eef2ff;padding:7px 10px;border-radius:99px}.tag button{padding:0 0 0 6px;background:none}.opts{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:10px}.opt{border:1px solid #dfe3e8;border-radius:10px;padding:10px;text-align:center;cursor:pointer}.opt.active{background:#20242b;color:#fff}.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}.fact,.source{padding:10px;margin:8px 0;border:1px solid #e1e5ea;border-radius:10px}.muted{font-size:12px;color:#707783}.preview{background:#fff;border:1px solid #e1e5ea;border-radius:12px;padding:22px;line-height:1.85}.preview h2{font-size:21px;margin:25px 0 10px}.preview p{white-space:pre-wrap;margin:0 0 15px}.preview img{display:block;max-width:100%;max-height:520px;object-fit:contain;margin:14px auto;border-radius:10px}.imggrid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:10px}.imgcard{border:1px solid #ddd;border-radius:10px;overflow:hidden}.imgcard img{width:100%;aspect-ratio:16/10;object-fit:cover;display:block}.imgcard div{font-size:11px;padding:7px}.progressbox{margin-top:12px;border:1px solid #e1e5ea;border-radius:12px;padding:12px;background:#fafbfc}.progressbar{height:10px;background:#e8ebef;border-radius:99px;overflow:hidden;margin:8px 0}.progressfill{height:100%;width:0;background:#20242b;transition:width .25s ease}.progresshead{display:flex;justify-content:space-between;gap:10px;font-weight:700;font-size:13px}.logbox{max-height:220px;overflow:auto;background:#111827;color:#e5e7eb;border-radius:10px;padding:10px;font:12px/1.6 Consolas,monospace;white-space:pre-wrap}.logline{padding:2px 0}.badge{display:inline-block;padding:3px 7px;border-radius:99px;background:#edf0f4;font-size:11px;margin-right:5px}.source-title{margin-top:8px;font-weight:700}.sectionrow{padding:5px 0;border-bottom:1px solid #f0f1f3;font-size:12px}.sectionrow:last-child{border-bottom:0}@media(max-width:780px){.grid2{grid-template-columns:1fr}.opts{grid-template-columns:repeat(2,1fr)}.imggrid{grid-template-columns:repeat(2,1fr)}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1>⚡ 콘텐츠 메이커</h1>
+<p class="muted">백그라운드 나무위키 수집 → 광고/여담 제외 → 전체 목차/본문/이미지 수집 → AI 블로그/쇼츠 작성</p>
+
+<div class="card"><b>① 검색어</b><div class="row" style="margin-top:9px"><input id="kw" placeholder="예: 하영, 안상호"><button class="primary" onclick="add()">추가</button></div><div id="tags" class="tags"></div></div>
+
+<div class="card"><b>② 주제</b><div class="opts">
+<div class="opt active" data-v="인물 소개">인물 소개</div><div class="opt" data-v="열애설">열애설</div><div class="opt" data-v="논란">논란</div><div class="opt" data-v="사건·이슈">사건·이슈</div><div class="opt" data-v="친일 논란">친일 논란</div><div class="opt" data-v="친중 논란">친중 논란</div><div class="opt" data-v="학폭 논란">학폭 논란</div><div class="opt" data-v="근황">근황</div><div class="opt" data-v="과거 발언">과거 발언</div><div class="opt" data-v="관계 분석">관계 분석</div><div class="opt" data-v="자유 주제">자유 주제</div>
+</div><input id="custom" style="margin-top:9px" placeholder="직접 주제"></div>
+
+<div class="card"><b>③ 스타일</b><div class="grid2" style="margin-top:9px"><select id="style"><option>네이버 블로그형</option><option selected>흥미로운 스토리형</option><option>뉴스·기사형</option><option>팩트체크형</option><option>연예 이슈형</option></select><select id="length"><option>짧게</option><option selected>보통</option><option>길게</option></select></div></div>
+
+<div class="card"><textarea id="extra" rows="3" placeholder="추가 자료가 있다면 입력하세요."></textarea></div>
+
+<div class="card">
+<button id="generateBtn" class="primary" style="width:100%;font-size:16px" onclick="generate()">🔎 수집 → 블로그 + 쇼츠 생성</button>
+<div id="status" class="status">준비 완료</div>
+<div class="progressbox">
+<div class="progresshead"><span id="progressPhase">대기</span><span id="progressPercent">0%</span></div>
+<div class="progressbar"><div id="progressFill" class="progressfill"></div></div>
+<div id="progressDetail" class="muted">작업을 시작하면 실제 진행 상황이 표시됩니다.</div>
+<div id="progressLog" class="logbox" style="margin-top:9px">아직 작업 로그가 없습니다.</div>
+</div>
+</div>
+
+<div class="grid2">
+<div class="card"><div class="row"><b class="grow">📝 블로그 원문</b><button class="secondary" onclick="copy('blog')">복사</button></div><textarea id="blog" rows="30"></textarea></div>
+<div class="card"><div class="row"><b class="grow">📱 쇼츠 자막</b><button class="secondary" onclick="copy('shorts')">복사</button></div><textarea id="shorts" rows="30"></textarea><div id="hashtags"></div></div>
+</div>
+
+<div class="card"><b>🖼 블로그 미리보기</b><p class="muted">원문 목차와 연결된 이미지가 실제 로컬 수집 이미지로 표시됩니다.</p><div id="blogPreview" class="preview"></div></div>
+
+<div class="card"><b>🔗 수집한 문서 / 전체 목차 / 이미지</b><div id="sources"></div></div>
+</div>
+
+<script>
+let kws=[];let topic="인물 소개";let progressTimer=null;const $=id=>document.getElementById(id);
+
+$("kw").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();add()}});
+document.querySelectorAll(".opt").forEach(x=>x.onclick=()=>{document.querySelectorAll(".opt").forEach(y=>y.classList.remove("active"));x.classList.add("active");topic=x.dataset.v});
+
+function add(){
+  $("kw").value.split(",").map(x=>x.trim()).filter(Boolean).forEach(x=>{if(!kws.includes(x)&&kws.length<5)kws.push(x)});
+  $("kw").value="";renderTags();
+}
+function renderTags(){
+  $("tags").innerHTML=kws.map((x,i)=>`<span class="tag">${esc(x)} <button onclick="kws.splice(${i},1);renderTags()">×</button></span>`).join("");
+}
+function selectedTopic(){return $("custom").value.trim()||topic}
+
+async function pollProgress(){
+  try{
+    const r=await fetch("/api/progress?ts="+Date.now(),{cache:"no-store"});
+    const p=await r.json();
+    $("progressPhase").textContent=`${p.phase||"대기"} · ${p.step||""}`;
+    $("progressPercent").textContent=`${p.percent||0}%`;
+    $("progressFill").style.width=`${p.percent||0}%`;
+    $("progressDetail").textContent=p.detail||"";
+    const logs=(p.logs||[]).slice(-40);
+    $("progressLog").innerHTML=logs.map(x=>`<div class="logline">[${esc(x.time||"")}] <span class="badge">${esc(x.phase||"")}</span> ${esc(x.detail||"")}</div>`).join("")||"아직 작업 로그가 없습니다.";
+    $("progressLog").scrollTop=$("progressLog").scrollHeight;
+    if(p.running && !progressTimer) progressTimer=setInterval(pollProgress,350);
+    if(!p.running && progressTimer){clearInterval(progressTimer);progressTimer=null}
+  }catch{}
+}
+
+function startPolling(){if(progressTimer)clearInterval(progressTimer);progressTimer=setInterval(pollProgress,350);pollProgress()}
+function stopPolling(){if(progressTimer){clearInterval(progressTimer);progressTimer=null}pollProgress()}
+
+async function generate(){
+  if(!kws.length){alert("검색어를 입력하세요.");return}
+  const t=selectedTopic();
+  $("generateBtn").disabled=true;
+  $("generateBtn").textContent="⏳ 작업 중...";
+  $("status").className="status";
+  $("status").textContent="실제 수집/작성 작업을 진행 중입니다. 아래 로그를 확인하세요.";
+  startPolling();
+
+  try{
+    const nr=await fetch("/api/namu-search",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({keywords:kws,topic:t})});
+    const nd=await nr.json();
+    if(!nr.ok||!nd.ok)throw Error(nd.error||"나무위키 검색 실패");
+    renderSources(nd.docs||[]);
+
+    $("status").textContent="문서·목차·관련 이미지 수집 완료. 이제 AI가 전체 자료를 읽고 블로그/쇼츠를 작성합니다.";
+
+    const r=await fetch("/api/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({keywords:kws,topic:t,style:$('style').value,length:$('length').value,sourceText:$('extra').value,docs:nd.docs})});
+    const d=await r.json();
+    if(!r.ok||!d.ok)throw Error(d.error||"AI 생성 실패");
+
+    $("blog").value=(d.title?d.title+"\n\n":"")+(d.blog||"");
+    $("shorts").value=(d.shorts||[]).map(x=>`[${x.time}]\n${x.text}`).join("\n\n");
+    $("hashtags").innerHTML=(d.hashtags||[]).map(x=>`<span class="tag">${esc(x)}</span>`).join("");
+    $("facts").innerHTML=(d.factCheck||[]).map(x=>`<div class="fact"><b>${esc(x.status)}</b> ${esc(x.claim)}<br><span class="muted">${esc(x.explanation)}</span></div>`).join("");
+    renderBlogPreview(d);
+    renderSources(d.namuSources||[]);
+    $("status").className="status ok";
+    $("status").textContent="✅ 완료 · 광고/여담 제외 · 전체 자료 기반으로 블로그/쇼츠 생성 완료";
+  }catch(e){
+    console.error(e);
+    $("status").className="status err";
+    $("status").textContent="❌ 생성 실패\n"+e.message;
+    alert("콘텐츠 생성 오류\n\n"+e.message);
+  }finally{
+    $("generateBtn").disabled=false;
+    $("generateBtn").textContent="🔎 수집 → 블로그 + 쇼츠 생성";
+    stopPolling();
+  }
+}
+
+function renderBlogPreview(d){
+  const sections=d.blogSections||[];let html=d.title?`<h1>${esc(d.title)}</h1>`:"";
+  for(const s of sections){
+    html+=`<h2>${esc(s.heading||"")}</h2>`;
+    if(s.imageUrl){html+=`<img src="${esc(s.imageUrl)}" alt="${esc(s.heading||"")}" loading="lazy">`}
+    html+=`<p>${esc(s.body||"")}</p>`;
+  }
+  $("blogPreview").innerHTML=html||"<span class='muted'>미리보기 없음</span>";
+}
+
+function renderSources(docs){
+  $("sources").innerHTML=(docs||[]).map(d=>{
+    const toc=(d.toc||[]).map(x=>`<div class="sectionrow">${esc(x.number||"")} ${esc(x.title||"")}</div>`).join("");
+    const images=(d.images||[]).map(im=>`<div class="imgcard"><img src="${esc(im.localUrl||im.src||"")}" alt="${esc(im.alt||"")}" loading="lazy"><div>${esc(im.sectionNumber||"")} ${esc(im.sectionTitle||im.alt||"이미지")}</div></div>`).join("");
+    return `<div class="source"><b>${esc(d.keyword||"")} → ${esc(d.title||"")}</b><br><a href="${esc(d.url||"")}" target="_blank">${esc(d.url||"")}</a><div class="source-title">📚 전체 목차 (${(d.toc||[]).length}개 · 여담 제외)</div><div>${toc||"<span class='muted'>목차 없음</span>"}</div>${images?`<div class="source-title">🖼 수집 이미지 (${(d.images||[]).length}개)</div><div class="imggrid">${images}</div>`:""}</div>`;
+  }).join("");
+}
+
+function copy(id){navigator.clipboard.writeText($(id).value).then(()=>alert("복사했습니다."))}
+function esc(x){return String(x??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"}[m]))}
+</script>
+</body>
+</html>
