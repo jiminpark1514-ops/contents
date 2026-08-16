@@ -81,8 +81,10 @@ function finishProgress(ok, detail) {
 }
 
 /* =========================================================
-   브라우저: 완전 백그라운드
-   Playwright는 headless=true이면 창을 띄우지 않는다.
+   브라우저: 화면에 실제 Chrome 창을 표시
+   ※ 로컬 PC에서 실행하면 Chrome 창이 눈에 보입니다.
+   ※ Render 같은 서버 환경에서는 서버에 화면이 없으므로
+      사용자의 PC 화면에 Chrome이 나타나지는 않습니다.
 ========================================================= */
 let browser = null;
 let page = null;
@@ -127,14 +129,11 @@ function shouldBlockRequest(url) {
 
 async function getPage() {
   if (!browser) {
-    setProgress("브라우저", "백그라운드 브라우저 초기화", 3, "나무위키 수집용 Chromium을 창 없이 시작합니다.");
+    setProgress("브라우저", "Chrome 창 시작", 3, "나무위키 접속 과정을 화면에 표시합니다.");
     browser = await chromium.launch({
-      headless: true,
+      headless: false,
       args: [
-        "--disable-blink-features=AutomationControlled",
-        "--disable-background-networking",
-        "--disable-background-timer-throttling",
-        "--disable-renderer-backgrounding",
+        "--start-maximized",
         "--no-first-run",
         "--no-default-browser-check"
       ]
@@ -143,10 +142,7 @@ async function getPage() {
 
   if (!page || page.isClosed()) {
     page = await browser.newPage({
-      viewport: { width: 1440, height: 1000 },
-      userAgent:
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
-        "(KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36"
+      viewport: { width: 1440, height: 1000 }
     });
 
     await page.route("**/*", async route => {
@@ -158,11 +154,6 @@ async function getPage() {
       await route.continue();
     });
 
-    await page.addInitScript(() => {
-      Object.defineProperty(navigator, "webdriver", { get: () => undefined });
-      Object.defineProperty(navigator, "languages", { get: () => ["ko-KR", "ko", "en-US", "en"] });
-      Object.defineProperty(navigator, "platform", { get: () => "Win32" });
-    });
   }
 
   return page;
@@ -715,7 +706,7 @@ function attachImages(data, docs) {
    API
 ========================================================= */
 app.get("/api/health", (req, res) => {
-  res.json({ ok: true, apiKeyConfigured: !!process.env.OPENAI_API_KEY, model: MODEL, headless: true, adFilter: true });
+  res.json({ ok: true, apiKeyConfigured: !!process.env.OPENAI_API_KEY, model: MODEL, headless: false, adFilter: true, visibleBrowser: true });
 });
 
 app.get("/api/progress", (req, res) => {
