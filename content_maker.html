@@ -2,117 +2,40 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
 <title>콘텐츠 메이커</title>
 <style>
-*{box-sizing:border-box}body{margin:0;background:#f5f7fb;color:#20242b;font-family:Arial,"Noto Sans KR",sans-serif}.wrap{max-width:1180px;margin:auto;padding:24px 16px 60px}.card{background:#fff;border:1px solid #e3e7ed;border-radius:16px;padding:18px;margin:12px 0}.row{display:flex;gap:8px}.grow{flex:1}input,select,textarea{width:100%;border:1px solid #d7dce3;border-radius:10px;padding:11px;font-size:14px}textarea{line-height:1.65;resize:vertical}button{border:0;border-radius:10px;padding:10px 14px;font-weight:700;cursor:pointer}.primary{background:#20242b;color:#fff}.secondary{background:#edf0f4}.muted{font-size:12px;color:#707783}.status{font-size:13px;margin-top:9px;white-space:pre-wrap}.ok{color:#147a3d}.err{color:#b00020}.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}.paste-area{min-height:220px;max-height:400px;overflow-y:auto;border:1px solid #d7dce3;border-radius:10px;padding:14px;background:#fff;outline:none;line-height:1.65}.paste-area img{max-width:100%;height:auto;border-radius:8px;margin:8px 0}.imgs{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin-top:10px}.img{border:2px solid transparent;border-radius:10px;overflow:hidden}.img img{width:100%;aspect-ratio:16/10;object-fit:cover}.badge{display:inline-block;padding:5px 8px;border-radius:99px;background:#eef2ff;font-size:11px;margin:3px}@media(max-width:780px){.grid2{grid-template-columns:1fr}.imgs{grid-template-columns:repeat(2,1fr)}}
+body{background:#f5f7fb;padding:20px;font-family:sans-serif}
+.card{background:#fff;padding:20px;border-radius:10px;margin-bottom:20px}
+textarea, .result-area{width:100%;padding:10px;border:1px solid #ddd;border-radius:5px}
 </style>
 </head>
 <body>
-<div class="wrap">
-<h1>⚡ 콘텐츠 메이커 (개선 버전)</h1>
-<p class="muted">내용을 복사(`Ctrl+C`)하여 아래 편집기에 붙여넣기(`Ctrl+V`) 하세요.</p>
-
-<div class="card"><div class="row"><b class="grow">🔌 서버 상태</b><button class="secondary" onclick="health()">확인</button></div><div id="health" class="status">확인 중...</div></div>
-
+<h1>⚡ 콘텐츠 메이커</h1>
 <div class="card">
-  <b>① 자료 붙여넣기</b>
-  <div id="pasteBox" class="paste-area" contenteditable="true" placeholder="이곳에 내용을 붙여넣으세요..."></div>
+  <textarea id="pasteBox" rows="5" placeholder="내용을 붙여넣으세요..."></textarea>
+  <button onclick="generate()">생성하기</button>
 </div>
-
 <div class="card">
-  <b>② AI 작성 스타일</b>
-  <div class="grid2" style="margin-top:9px">
-    <select id="style">
-      <option>네이버 블로그형</option>
-      <option>뉴스·기사형</option>
-      <option>흥미로운 스토리형</option>
-      <option>팩트체크형</option>
-      <option>연예 이슈형</option>
-    </select>
-    <select id="length">
-      <option>짧게</option>
-      <option selected>보통</option>
-      <option>길게</option>
-    </select>
-  </div>
-</div>
-
-<div class="card"><textarea id="extra" rows="3" placeholder="추가 요청사항을 입력하세요."></textarea></div>
-
-<div class="card">
-  <button class="primary" style="width:100%;font-size:16px" onclick="generate()">🔎 콘텐츠 만들기</button>
-  <div id="status" class="status">자료를 붙여넣고 버튼을 누르세요.</div>
-</div>
-
-<div class="grid2">
-  <div class="card"><div class="row"><b class="grow">📝 블로그</b><button class="secondary" onclick="copy('blog')">복사</button></div><textarea id="blog" rows="32"></textarea></div>
-  <div class="card"><div class="row"><b class="grow">📱 쇼츠 자막</b><button class="secondary" onclick="copy('shorts')">복사</button></div><textarea id="shorts" rows="32"></textarea><div id="hash"></div></div>
-</div>
-
-<div class="card"><b>🖼 인식된 이미지 목록</b><div id="extractedImgs" class="imgs"><div class="muted">이미지 없음</div></div></div>
+  <div id="blog" class="result-area" style="white-space:pre-wrap;"></div>
 </div>
 
 <script>
-const $=id=>document.getElementById(id);
-
-async function health(){
-  try{
-    const r=await fetch("/api/health");
-    const d=await r.json();
-    $("health").className="status "+(d.apiKeyConfigured?"ok":"err");
-    $("health").textContent=(d.apiKeyConfigured?"✅":"❌")+" 서버 연결 / API 키 "+(d.apiKeyConfigured?"인식":"없음");
-  }catch(e){$("health").textContent="❌ "+e.message}
-}
-
 async function generate(){
-  const pasteBox = $("pasteBox");
-  const textContent = pasteBox.innerText.trim();
-  const extraContent = $("extra").value.trim();
-
-  // 20자 제한을 5자로 완화
-  if(!textContent || textContent.length < 5){
-    return alert("내용을 5자 이상 붙여넣어 주세요.");
-  }
-
-  let finalSourceText = textContent;
-  if(extraContent) finalSourceText += `\n\n[사용자 추가 요청사항]\n${extraContent}`;
-
-  const imgs = Array.from(pasteBox.querySelectorAll("img")).map(img => ({ src: img.src, alt: img.alt || "" }));
-  if(imgs.length > 0){
-    $("extractedImgs").innerHTML = imgs.map(img => `<div class="img"><img src="${img.src}"><div class="muted" style="font-size:10px;padding:4px">${img.alt || '이미지'}</div></div>`).join("");
-  }
-
-  try {
-    $("status").textContent="🤖 분석 및 작성 중...";
-    const r = await fetch("/api/generate", {
-      method: "POST",
-      headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({
-        topic: "사용자 입력 자료",
-        style: $("style").value,
-        length: $("length").value,
-        sourceText: finalSourceText,
-        docs: []
-      })
-    });
-
-    const d = await r.json();
-    if(!r.ok) throw Error(d.error || "생성 실패");
-
-    $("blog").value = (d.title ? d.title + "\n\n" : "") + (d.blog || "");
-    $("shorts").value = (d.shorts || []).map(x => `[${x.time}]\n${x.text}`).join("\n\n");
-    $("hash").innerHTML = (d.hashtags || []).map(x => `<span class="badge">${esc(x)}</span>`).join("");
-    $("status").className = "status ok";
-    $("status").textContent = "✅ 완료!";
-  } catch(e) {
-    $("status").className = "status err";
-    $("status").textContent = "❌ " + e.message;
-  }
+  const text = document.getElementById("pasteBox").value;
+  const res = await fetch("/api/generate", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({
+      topic: "직접 붙여넣은 자료",
+      style: "자극적이고 흥미로운 스토리형",
+      length: "보통",
+      sourceText: text,
+      docs: []
+    })
+  });
+  const data = await res.json();
+  document.getElementById("blog").innerHTML = `<h1><b>${data.title}</b></h1>` + data.blog;
 }
-function copy(id){navigator.clipboard.writeText($(id).value).then(()=>alert("복사됨."))}
-function esc(x){return String(x??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"}[m]))}
-health();
 </script>
 </body>
 </html>
