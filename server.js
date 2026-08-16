@@ -19,6 +19,7 @@ await fs.mkdir(IMAGE_DIR, { recursive: true });
 app.use(express.json({ limit: "20mb" }));
 app.use(express.static(__dirname));
 app.use("/collected_images", express.static(IMAGE_DIR));
+app.get("/", (req, res) => res.sendFile(path.join(__dirname, "content_maker.html")));
 
 /* =========================================================
    진행상황
@@ -81,10 +82,8 @@ function finishProgress(ok, detail) {
 }
 
 /* =========================================================
-   브라우저: 화면에 실제 Chrome 창을 표시
-   ※ 로컬 PC에서 실행하면 Chrome 창이 눈에 보입니다.
-   ※ Render 같은 서버 환경에서는 서버에 화면이 없으므로
-      사용자의 PC 화면에 Chrome이 나타나지는 않습니다.
+   브라우저: 완전 백그라운드
+   Playwright는 headless=true이면 창을 띄우지 않는다.
 ========================================================= */
 let browser = null;
 let page = null;
@@ -129,11 +128,14 @@ function shouldBlockRequest(url) {
 
 async function getPage() {
   if (!browser) {
-    setProgress("브라우저", "Chrome 창 시작", 3, "나무위키 접속 과정을 화면에 표시합니다.");
+    setProgress("브라우저", "백그라운드 브라우저 초기화", 3, "나무위키 수집용 Chromium을 창 없이 시작합니다.");
     browser = await chromium.launch({
       headless: true,
       args: [
-        "--start-maximized",
+        "--disable-blink-features=AutomationControlled",
+        "--disable-background-networking",
+        "--disable-background-timer-throttling",
+        "--disable-renderer-backgrounding",
         "--no-first-run",
         "--no-default-browser-check"
       ]
@@ -142,7 +144,10 @@ async function getPage() {
 
   if (!page || page.isClosed()) {
     page = await browser.newPage({
-      viewport: { width: 1440, height: 1000 }
+      viewport: { width: 1440, height: 1000 },
+      userAgent:
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
+        "(KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36"
     });
 
     await page.route("**/*", async route => {
@@ -154,6 +159,11 @@ async function getPage() {
       await route.continue();
     });
 
+    await page.addInitScript(() => {
+      Object.defineProperty(navigator, "webdriver", { get: () => undefined });
+      Object.defineProperty(navigator, "languages", { get: () => ["ko-KR", "ko", "en-US", "en"] });
+      Object.defineProperty(navigator, "platform", { get: () => "Win32" });
+    });
   }
 
   return page;
@@ -321,16 +331,16 @@ async function getSearchLinks(p) {
 async function searchNamu(keyword, topic, keywordIndex, keywordTotal) {
   const p = await getPage();
   const base = 5 + Math.round(((keywordIndex - 1) / Math.max(keywordTotal, 1)) * 10);
-
-  // 나무위키 검색창/검색버튼을 사용하지 않고
-  // 입력한 검색어를 바로 문서 URL로 만들어 접속한다.
-  // 예: 삼성전자 -> https://namu.wiki/w/삼성전자
   const cleanKeyword = String(keyword || "").trim();
+
   if (!cleanKeyword) {
-    throw new Error("검색어가 비어 있습니다.");
+    throw new Error("나무위키 검색어가 비어 있습니다.");
   }
 
-  const url = `https://namu.wiki/w/${encodeURIComponent(cleanKeyword)}`;
+  // 검색창/검색버튼을 사용하지 않고 문서 URL로 직접 접속한다.
+  const url =
+    "https://namu.wiki/w/" +
+    encodeURIComponent(cleanKeyword);
 
   setProgress(
     "문서 검색",
@@ -339,47 +349,65 @@ async function searchNamu(keyword, topic, keywordIndex, keywordTotal) {
     `나무위키 문서 직접 접속: ${cleanKeyword}`
   );
 
-  const response = await p.goto(url, {
+  await p.goto(url, {
     waitUntil: "domcontentloaded",
     timeout: 30000
   });
 
-  await p.waitForTimeout(1000);
+  await p.waitForTimeout(1200);
 
-  const status = response ? response.status() : 0;
-  const finalUrl = p.url();
+  const currentUrl = p.url();
   const title = await p.title().catch(() => "");
 
-  // HTTP 404이거나 오류 페이지인 경우 명확하게 알려준다.
-  if (status === 404 || /(?:404|존재하지 않는 문서|문서를 찾을 수 없습니다)/i.test(title)) {
+  // Cloudflare 보안검증/챌린지 페이지인지 먼저 확인한다.
+  const securityText = await p.locator("body").innerText().catch(() => "");
+  const securityCombined = `${title}\n${securityText}`;
+
+  if (
+    /performing security verification/i.test(securityCombined) ||
+    /this website uses a security service/i.test(securityCombined) ||
+    /checking your browser/i.test(securityCombined) ||
+    /verify you are human/i.test(securityCombined) ||
+    /cloudflare/i.test(securityCombined) && /verification/i.test(securityCombined)
+  ) {
     throw new Error(
-      `나무위키 문서를 찾지 못했습니다.\n검색어: ${cleanKeyword}\n접속 URL: ${url}\nHTTP: ${status || "확인불가"}`
+      `나무위키가 Cloudflare 보안검증 페이지를 반환했습니다. ` +
+      `자동 크롤링으로 본문을 가져오지 못했습니다. ` +
+      `현재 URL: ${currentUrl}`
     );
   }
 
-  // 나무위키가 문서명으로 리다이렉트한 경우 최종 URL을 사용한다.
-  if (!finalUrl.includes("/w/")) {
+  // 실제 문서 본문이 로딩될 시간을 조금 준다.
+  await p.waitForTimeout(1500);
+
+  const bodyText = await p.locator("body").innerText().catch(() => "");
+  if (!bodyText || bodyText.trim().length < 100) {
     throw new Error(
-      `나무위키 문서 페이지로 이동하지 못했습니다.\n검색어: ${cleanKeyword}\n현재 URL: ${finalUrl}`
+      `나무위키 문서 본문이 비어 있습니다. URL: ${currentUrl}`
     );
   }
 
-  const chosen = {
-    text: cleanKeyword,
-    title: title || cleanKeyword,
-    href: finalUrl
-  };
+  // 실제 문서 URL인지 확인한다.
+  if (!/https:\/\/namu\.wiki\/w\//i.test(currentUrl)) {
+    throw new Error(
+      `나무위키 문서 URL로 이동하지 못했습니다. 현재 URL: ${currentUrl}`
+    );
+  }
 
   setProgress(
     "문서 검색",
-    `문서 선택 ${keywordIndex}/${keywordTotal}`,
+    `문서 확인 ${keywordIndex}/${keywordTotal}`,
     base + 5,
-    `직접 접속한 문서: ${title || cleanKeyword}`
+    `문서 확인 완료: ${title || cleanKeyword}`
   );
 
   return {
-    chosen,
-    url: finalUrl
+    chosen: {
+      text: title || cleanKeyword,
+      title: title || cleanKeyword,
+      href: currentUrl
+    },
+    url: currentUrl
   };
 }
 
@@ -706,7 +734,7 @@ function attachImages(data, docs) {
    API
 ========================================================= */
 app.get("/api/health", (req, res) => {
-  res.json({ ok: true, apiKeyConfigured: !!process.env.OPENAI_API_KEY, model: MODEL, headless: false, adFilter: true, visibleBrowser: true });
+  res.json({ ok: true, apiKeyConfigured: !!process.env.OPENAI_API_KEY, model: MODEL, headless: true, adFilter: true, namuDirectUrl: true });
 });
 
 app.get("/api/progress", (req, res) => {
