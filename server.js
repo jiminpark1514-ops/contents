@@ -130,9 +130,9 @@ async function getPage() {
   if (!browser) {
     setProgress("브라우저", "브라우저 초기화", 3, "Cloudflare 우회를 위해 헤드풀(Headful) 모드로 시작합니다.");
     
-    // 로컬 환경 테스트 시 headless: false 필수
+    // 로컬 환경 테스트 시 headless: true 필수
     browser = await chromium.launch({
-      headless: false, 
+      headless: true, 
       args: [
         "--disable-blink-features=AutomationControlled",
         "--start-maximized",
