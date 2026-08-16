@@ -132,7 +132,7 @@ async function getPage() {
     console.log("브라우저 초기화: Cloudflare 우회를 위해 헤드풀(Headful) 모드로 시작합니다.");
     
     browser = await chromium.launch({
-      headless: false, 
+      headless: true, // GitHub Actions 환경에서는 반드시 true여야 합니다.
       args: [
         "--disable-blink-features=AutomationControlled",
         "--start-maximized",
