@@ -18,6 +18,11 @@ await fs.mkdir(IMAGE_DIR, { recursive: true });
 
 app.use(express.json({ limit: "20mb" }));
 app.use(express.static(__dirname));
+
+// Render에서 루트 URL(/)로 접속해도 콘텐츠 메이커가 열리도록 합니다.
+app.get("/", (req, res) => {
+  res.sendFile(path.join(__dirname, "content_maker.html"));
+});
 app.use("/collected_images", express.static(IMAGE_DIR));
 
 /* =========================================================
@@ -331,56 +336,25 @@ async function searchNamu(keyword, topic, keywordIndex, keywordTotal) {
   const p = await getPage();
   const base = 5 + Math.round(((keywordIndex - 1) / Math.max(keywordTotal, 1)) * 10);
 
-  setProgress(
-    "문서 검색",
-    `검색어 ${keywordIndex}/${keywordTotal}`,
-    base,
-    `나무위키 대문에 접속하고 실제 검색창을 찾는 중: ${keyword}`
-  );
+  setProgress("문서 검색", `검색어 ${keywordIndex}/${keywordTotal}`, base, `나무위키 검색 페이지 접속: ${keyword}`);
+  await p.goto("https://namu.wiki/w/%EB%82%98%EB%AC%B4%EC%9C%84%ED%82%A4:%EB%8C%80%EB%AC%B8", { waitUntil: "domcontentloaded", timeout: 30000 });
 
-  // 반드시 나무위키 실제 대문으로 이동한다.
-  // 기존 문서 페이지가 재사용되는 경우를 막는다.
-  await p.goto("https://namu.wiki/", {
-    waitUntil: "domcontentloaded",
-    timeout: 30000
-  });
-
-  // 나무위키 Vue 화면이 DOMContentLoaded 이후 렌더링될 수 있으므로
-  // 검색창이 실제 DOM에 나타날 때까지 충분히 기다린다.
-  const searchSelector = 'input[type="search"][placeholder="여기에서 검색"]';
-
-  try {
-    await p.waitForFunction(
-      () => {
-        const el = document.querySelector('input[type="search"][placeholder="여기에서 검색"]');
-        return !!el && !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length);
-      },
-      { timeout: 15000 }
-    );
-  } catch {
-    // placeholder가 바뀌더라도 type=search 입력창이 있으면 사용할 수 있게 한다.
-  }
-
+  // 나무위키 검색창 구조가 환경/버전에 따라 달라질 수 있으므로
+  // 고정 placeholder 하나에 의존하지 않고 여러 후보를 순서대로 찾는다.
   const searchCandidates = [
     'input[type="search"][placeholder="여기에서 검색"]',
     'input[type="search"]',
-    'input[placeholder*="여기에서 검색"]',
     'input[placeholder*="검색"]',
     'input[name="search"]',
-    'input[aria-label*="검색"]'
+    'input[aria-label*="검색"]',
+    'input[type="text"]'
   ];
 
   let input = null;
-
   for (const selector of searchCandidates) {
     const candidate = p.locator(selector).first();
-
     try {
-      await candidate.waitFor({
-        state: "visible",
-        timeout: 5000
-      });
-
+      await candidate.waitFor({ state: "visible", timeout: 3000 });
       if (await candidate.isEditable()) {
         input = candidate;
         break;
@@ -389,13 +363,11 @@ async function searchNamu(keyword, topic, keywordIndex, keywordTotal) {
   }
 
   if (!input) {
-    // 최후의 안전장치: 실제 보이는 search/text input을 직접 탐색한다.
+    // 마지막 안전장치: 현재 페이지의 보이는 입력창 중 편집 가능한 것을 찾는다.
     const editable = p.locator('input:visible');
     const count = await editable.count();
-
     for (let i = 0; i < count; i++) {
       const candidate = editable.nth(i);
-
       try {
         if (await candidate.isEditable()) {
           input = candidate;
@@ -406,122 +378,15 @@ async function searchNamu(keyword, topic, keywordIndex, keywordTotal) {
   }
 
   if (!input) {
-    throw new Error(
-      "나무위키 검색 입력창을 찾지 못했습니다. " +
-      "현재 접속된 페이지에 input[type=\"search\"]가 생성되지 않았습니다."
-    );
+    throw new Error("나무위키 검색 입력창을 찾지 못했습니다. 페이지 구조가 변경되었을 수 있습니다.");
   }
-
-  setProgress(
-    "문서 검색",
-    `검색어 입력 ${keywordIndex}/${keywordTotal}`,
-    base + 1,
-    `나무위키 검색창에 '${keyword}' 입력`
-  );
 
   await input.fill(keyword);
+  await input.press("Enter");
+  await p.waitForTimeout(900);
 
-  /*
-   * 사용자가 확인한 실제 나무위키 검색 버튼의 SVG path.
-   *
-   * <path d="M438.6 278.6 ..."></path>
-   *
-   * Enter만 보내지 않고 실제 검색 버튼을 찾아 클릭한다.
-   * 버튼의 부모가 button/a가 아니어도 가장 가까운 클릭 가능한
-   * 요소를 찾아 DOM click을 실행한다.
-   */
-  const SEARCH_PATH_D =
-    "M438.6 278.6c12.5-12.5 12.5-32.8 0-45.3l-160-160c-12.5-12.5-32.8-12.5-45.3 0s-12.5 32.8 0 45.3L338.8 224 32 224c-17.7 0-32 14.3-32 32s14.3 32 32 32l306.7 0L233.4 393.4c-12.5 12.5-12.5 32.8 0 45.3s32.8 12.5 45.3 0l160-160z";
-
-  let clicked = false;
-
-  try {
-    const searchPath = p.locator(`path[d="${SEARCH_PATH_D}"]`).first();
-
-    await searchPath.waitFor({
-      state: "visible",
-      timeout: 8000
-    });
-
-    clicked = await searchPath.evaluate(el => {
-      let node = el;
-
-      // 가장 가까운 실제 클릭 요소를 찾는다.
-      while (node && node !== document.body) {
-        if (
-          node.tagName === "BUTTON" ||
-          node.tagName === "A" ||
-          node.getAttribute("role") === "button"
-        ) {
-          node.click();
-          return true;
-        }
-        node = node.parentElement;
-      }
-
-      // path 자체를 클릭해도 이벤트 버블링으로 동작하는 경우를 대비한다.
-      el.dispatchEvent(
-        new MouseEvent("click", {
-          bubbles: true,
-          cancelable: true,
-          view: window
-        })
-      );
-
-      return true;
-    });
-  } catch {}
-
-  // SVG path가 바뀐 경우를 대비한 보조 검색 버튼 탐색.
-  if (!clicked) {
-    const buttonCandidates = [
-      'button[aria-label*="검색"]',
-      'button[title*="검색"]',
-      'a[aria-label*="검색"]',
-      'a[title*="검색"]',
-      'button[type="submit"]',
-      'form button'
-    ];
-
-    for (const selector of buttonCandidates) {
-      const button = p.locator(selector).first();
-
-      try {
-        await button.waitFor({
-          state: "visible",
-          timeout: 2000
-        });
-
-        await button.click();
-        clicked = true;
-        break;
-      } catch {}
-    }
-  }
-
-  // 버튼을 찾지 못한 아주 예외적인 경우에만 Enter를 사용한다.
-  if (!clicked) {
-    await input.press("Enter");
-  }
-
-  await p.waitForTimeout(1200);
-
-  setProgress(
-    "문서 검색",
-    `검색결과 분석 ${keywordIndex}/${keywordTotal}`,
-    base + 2,
-    `검색 결과 링크를 추출하고 광고/외부 링크를 제외하는 중: ${keyword}`
-  );
-
-  // 검색 결과가 SPA 방식으로 렌더링되는 시간을 충분히 기다린다.
-  try {
-    await p.locator('a[href^="/w/"]').first().waitFor({
-      state: "visible",
-      timeout: 15000
-    });
-  } catch {
-    // 아래 getSearchLinks에서 다시 검사하여 더 정확한 오류를 낸다.
-  }
+  setProgress("문서 검색", `검색결과 분석 ${keywordIndex}/${keywordTotal}`, base + 2, `검색 결과 링크를 추출하고 광고/외부 링크를 제외하는 중: ${keyword}`);
+  await p.locator('a[href^="/w/"]').first().waitFor({ state: "visible", timeout: 15000 });
 
   let links = await getSearchLinks(p);
   const needle = String(topic || "").trim().toLowerCase();
@@ -538,110 +403,39 @@ async function searchNamu(keyword, topic, keywordIndex, keywordTotal) {
   });
 
   if (!candidates.length && needle) {
-    setProgress(
-      "문서 검색",
-      `주제 재검색 ${keywordIndex}/${keywordTotal}`,
-      base + 4,
-      `주제 포함 결과가 없어 '${keyword} ${topic}'으로 다시 검색합니다`
-    );
-
+    setProgress("문서 검색", `주제 재검색 ${keywordIndex}/${keywordTotal}`, base + 4, `주제 포함 결과가 없어 '${keyword} ${topic}'으로 다시 찾는 중`);
     await input.fill(`${keyword} ${topic}`);
-
-    let retryClicked = false;
-
-    try {
-      const searchPath = p.locator(`path[d="${SEARCH_PATH_D}"]`).first();
-
-      await searchPath.waitFor({
-        state: "visible",
-        timeout: 5000
-      });
-
-      retryClicked = await searchPath.evaluate(el => {
-        let node = el;
-
-        while (node && node !== document.body) {
-          if (
-            node.tagName === "BUTTON" ||
-            node.tagName === "A" ||
-            node.getAttribute("role") === "button"
-          ) {
-            node.click();
-            return true;
-          }
-          node = node.parentElement;
-        }
-
-        el.dispatchEvent(
-          new MouseEvent("click", {
-            bubbles: true,
-            cancelable: true,
-            view: window
-          })
-        );
-
-        return true;
-      });
-    } catch {}
-
-    if (!retryClicked) {
-      await input.press("Enter");
-    }
-
-    await p.waitForTimeout(1200);
-
+    await input.press("Enter");
+    await p.waitForTimeout(900);
     const more = await getSearchLinks(p);
-
     candidates = more.filter(x => {
       const text = (x.text + " " + x.title).toLowerCase();
-      return !isAdLine(x.text) &&
-        text.includes(key) &&
-        text.includes(needle);
+      return !isAdLine(x.text) && text.includes(key) && text.includes(needle);
     });
   }
 
   if (!candidates.length) {
-    candidates = links.filter(x =>
-      (x.text + " " + x.title).toLowerCase().includes(key)
-    );
+    candidates = links.filter(x => (x.text + " " + x.title).toLowerCase().includes(key));
   }
 
-  if (!candidates.length) {
-    throw new Error(
-      `'${keyword}' 검색 결과를 찾지 못했습니다. ` +
-      `나무위키 검색 버튼 클릭 후 결과 페이지를 확인하지 못했습니다.`
-    );
-  }
+  if (!candidates.length) throw new Error(`'${keyword}' 검색 결과를 찾지 못했습니다.`);
 
   candidates.sort((a, b) => {
     const score = x => {
       const text = (x.text + " " + x.title).toLowerCase();
       let n = 0;
-
       if (text === key) n += 100;
       if (text.includes(key)) n += 30;
       if (needle && text.includes(needle)) n += 70;
-
       return n;
     };
-
     return score(b) - score(a);
   });
 
   const chosen = candidates[0];
   const url = new URL(chosen.href, "https://namu.wiki").href;
-
-  setProgress(
-    "문서 검색",
-    `문서 선택 ${keywordIndex}/${keywordTotal}`,
-    base + 5,
-    `선택 문서: ${chosen.text}`
-  );
-
-  return {
-    chosen,
-    url
-  };
+  setProgress("문서 검색", `문서 선택 ${keywordIndex}/${keywordTotal}`, base + 5, `선택 문서: ${chosen.text}`);
+  return { chosen, url };
 }
 
 async function extractDocument(p, keyword, chosen, url, keywordIndex, keywordTotal) {
