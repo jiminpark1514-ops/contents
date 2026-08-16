@@ -1,14 +1,12 @@
 services:
   - type: web
-    name: content-maker-namu
-    runtime: node
+    name: content-maker
+    runtime: docker
     plan: free
-    buildCommand: npm install && npx playwright install chromium
-    startCommand: npm start
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/health
     envVars:
       - key: OPENAI_API_KEY
         sync: false
       - key: OPENAI_MODEL
         value: gpt-5.6
-      - key: NAMU_HEADLESS
-        value: "true"
