@@ -2279,6 +2279,23 @@ app.get(
 );
 
 app.get(
+  "/api/routes",
+  (req, res) => {
+    res.type("application/json").json({
+      ok: true,
+      service: "content-maker",
+      routes: [
+        "GET /api/health",
+        "GET /api/progress",
+        "POST /api/namu-search",
+        "POST /api/namu-crawl",
+        "POST /api/generate"
+      ]
+    });
+  }
+);
+
+app.get(
   "/api/progress",
   (req, res) => {
     res.json(
@@ -2959,6 +2976,7 @@ app.use(
   (req, res) => {
     res
       .status(404)
+      .type("application/json")
       .json({
         ok: false,
 
