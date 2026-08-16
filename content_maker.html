@@ -47,8 +47,21 @@
 </div>
 
 <div class="grid2">
-  <div class="card"><div class="row"><b class="grow">📝 블로그 (HTML)</b><button class="secondary" onclick="copy('blog')">복사</button></div><textarea id="blog" rows="32"></textarea></div>
-  <div class="card"><div class="row"><b class="grow">📱 쇼츠 자막 (후킹 시작)</b><button class="secondary" onclick="copy('shorts')">복사</button></div><textarea id="shorts" rows="32"></textarea><div id="hash"></div></div>
+  <div class="card">
+    <div class="row">
+      <b class="grow">📝 블로그 (HTML 렌더링 뷰)</b>
+      <button class="secondary" onclick="copyBlogHtml()">HTML 소스 복사</button>
+    </div>
+    <div id="blog" style="min-height:500px; max-height:700px; overflow-y:auto; border:1px solid #d7dce3; border-radius:10px; padding:14px; background:#fff; line-height:1.65; margin-top:8px;"></div>
+  </div>
+  <div class="card">
+    <div class="row">
+      <b class="grow">📱 쇼츠 자막 (더 길고 상세하게)</b>
+      <button class="secondary" onclick="copy('shorts')">복사</button>
+    </div>
+    <textarea id="shorts" rows="32" style="margin-top:8px;"></textarea>
+    <div id="hash"></div>
+  </div>
 </div>
 
 <div class="card"><b>🖼 인식된 이미지 목록</b><div id="extractedImgs" class="imgs"><div class="muted">아직 인식된 이미지가 없습니다.</div></div></div>
@@ -109,7 +122,8 @@ async function generate(){
     const d = await r.json();
     if(!r.ok || !d.ok) throw Error(d.error || "생성 실패");
 
-    $("blog").value = d.blog || "";
+    // 블로그는 HTML 렌더링된 모습으로 뷰에 반영
+    $("blog").innerHTML = d.blog || "";
     $("shorts").value = (d.shorts || []).map(x => `[${x.time}]\n${x.text}`).join("\n\n");
     $("hash").innerHTML = (d.hashtags || []).map(x => `<span class="badge">${esc(x)}</span>`).join("");
     
@@ -123,6 +137,7 @@ async function generate(){
 }
 
 function copy(id){navigator.clipboard.writeText($(id).value).then(()=>alert("복사했습니다."))}
+function copyBlogHtml(){navigator.clipboard.writeText($("blog").innerHTML).then(()=>alert("블로그 HTML 소스코드를 복사했습니다."))}
 function esc(x){return String(x??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"}[m]))}
 health();
 </script>
