@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: content-maker-namu
+    runtime: node
+    plan: free
+    buildCommand: npm install && npx playwright install chromium
+    startCommand: npm start
+    envVars:
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_MODEL
+        value: gpt-5.6
+      - key: NAMU_HEADLESS
+        value: "true"
