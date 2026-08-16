@@ -20,6 +20,11 @@ app.use(express.json({ limit: "20mb" }));
 app.use(express.static(__dirname));
 app.use("/collected_images", express.static(IMAGE_DIR));
 
+// Render에서 루트 주소(/)로 접속하면 콘텐츠 메이커 화면을 표시한다.
+app.get("/", (req, res) => {
+  res.sendFile(path.join(__dirname, "content_maker.html"));
+});
+
 /* =========================================================
    진행상황
 ========================================================= */
