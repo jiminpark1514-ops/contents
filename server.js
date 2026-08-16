@@ -128,27 +128,32 @@ function shouldBlockRequest(url) {
 
 async function getPage() {
   if (!browser) {
-    setProgress("브라우저", "백그라운드 브라우저 초기화", 3, "나무위키 수집용 Chromium을 창 없이 시작합니다.");
+    setProgress("브라우저", "브라우저 초기화", 3, "Cloudflare 우회를 위해 헤드풀(Headful) 모드로 시작합니다.");
+    
+    // 로컬 환경 테스트 시 headless: false 필수
     browser = await chromium.launch({
-      headless: true,
+      headless: false, 
       args: [
         "--disable-blink-features=AutomationControlled",
-        "--disable-background-networking",
-        "--disable-background-timer-throttling",
-        "--disable-renderer-backgrounding",
-        "--no-first-run",
-        "--no-default-browser-check"
+        "--start-maximized",
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-infobars",
+        "--window-size=1440,1000"
       ]
     });
   }
 
   if (!page || page.isClosed()) {
-    page = await browser.newPage({
+    const context = await browser.newContext({
       viewport: { width: 1440, height: 1000 },
-      userAgent:
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
-        "(KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36"
+      userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+      locale: "ko-KR",
+      timezoneId: "Asia/Seoul",
+      permissions: ["geolocation"]
     });
+
+    page = await context.newPage();
 
     await page.route("**/*", async route => {
       const request = route.request();
@@ -163,6 +168,10 @@ async function getPage() {
       Object.defineProperty(navigator, "webdriver", { get: () => undefined });
       Object.defineProperty(navigator, "languages", { get: () => ["ko-KR", "ko", "en-US", "en"] });
       Object.defineProperty(navigator, "platform", { get: () => "Win32" });
+      
+      if (!window.chrome) {
+        window.chrome = { runtime: {} };
+      }
     });
   }
 
