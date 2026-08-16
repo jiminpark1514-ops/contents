@@ -18,11 +18,6 @@ await fs.mkdir(IMAGE_DIR, { recursive: true });
 
 app.use(express.json({ limit: "20mb" }));
 app.use(express.static(__dirname));
-
-// Render에서 루트 URL(/)로 접속해도 콘텐츠 메이커가 열리도록 합니다.
-app.get("/", (req, res) => {
-  res.sendFile(path.join(__dirname, "content_maker.html"));
-});
 app.use("/collected_images", express.static(IMAGE_DIR));
 
 /* =========================================================
@@ -336,34 +331,60 @@ async function searchNamu(keyword, topic, keywordIndex, keywordTotal) {
   const p = await getPage();
   const base = 5 + Math.round(((keywordIndex - 1) / Math.max(keywordTotal, 1)) * 10);
 
-  setProgress("문서 검색", `검색어 ${keywordIndex}/${keywordTotal}`, base, `나무위키 검색 페이지 접속: ${keyword}`);
-  await p.goto("https://namu.wiki/w/%EB%82%98%EB%AC%B4%EC%9C%84%ED%82%A4:%EB%8C%80%EB%AC%B8", { waitUntil: "domcontentloaded", timeout: 30000 });
+  setProgress(
+    "문서 검색",
+    `검색어 ${keywordIndex}/${keywordTotal}`,
+    base,
+    `나무위키 메인 페이지 접속 후 검색창을 찾는 중: ${keyword}`
+  );
 
-  // 나무위키 검색창 구조가 환경/버전에 따라 달라질 수 있으므로
-  // 고정 placeholder 하나에 의존하지 않고 여러 후보를 순서대로 찾는다.
-  const searchCandidates = [
-    'input[type="search"][placeholder="여기에서 검색"]',
-    'input[type="search"]',
-    'input[placeholder*="검색"]',
-    'input[name="search"]',
-    'input[aria-label*="검색"]',
-    'input[type="text"]'
-  ];
+  // 중요: 검색창이 실제로 존재하는 나무위키 메인 페이지로 직접 접속한다.
+  // 기존 코드처럼 /w/나무위키:대문으로 들어가면 현재 사이트의 SPA 검색 UI가
+  // 렌더링되지 않는 경우가 있어 검색창을 찾지 못할 수 있다.
+  await p.goto("https://namu.wiki/", {
+    waitUntil: "domcontentloaded",
+    timeout: 30000
+  });
 
+  // Vue SPA가 검색창을 렌더링할 시간을 충분히 준다.
+  try {
+    await p.waitForLoadState("networkidle", { timeout: 10000 });
+  } catch {}
+
+  const searchSelector = 'input[type="search"][placeholder="여기에서 검색"]';
   let input = null;
-  for (const selector of searchCandidates) {
-    const candidate = p.locator(selector).first();
-    try {
-      await candidate.waitFor({ state: "visible", timeout: 3000 });
-      if (await candidate.isEditable()) {
-        input = candidate;
-        break;
-      }
-    } catch {}
+
+  try {
+    await p.locator(searchSelector).first().waitFor({
+      state: "visible",
+      timeout: 20000
+    });
+    input = p.locator(searchSelector).first();
+  } catch {}
+
+  // placeholder가 조금 달라진 경우를 위한 보조 탐색.
+  if (!input) {
+    const searchCandidates = [
+      'input[type="search"]',
+      'input[placeholder*="검색"]',
+      'input[name="search"]',
+      'input[aria-label*="검색"]'
+    ];
+
+    for (const selector of searchCandidates) {
+      const candidate = p.locator(selector).first();
+      try {
+        await candidate.waitFor({ state: "visible", timeout: 3000 });
+        if (await candidate.isEditable()) {
+          input = candidate;
+          break;
+        }
+      } catch {}
+    }
   }
 
   if (!input) {
-    // 마지막 안전장치: 현재 페이지의 보이는 입력창 중 편집 가능한 것을 찾는다.
+    // 최종적으로 현재 페이지의 모든 visible input 중 편집 가능한 것을 찾는다.
     const editable = p.locator('input:visible');
     const count = await editable.count();
     for (let i = 0; i < count; i++) {
@@ -378,15 +399,86 @@ async function searchNamu(keyword, topic, keywordIndex, keywordTotal) {
   }
 
   if (!input) {
-    throw new Error("나무위키 검색 입력창을 찾지 못했습니다. 페이지 구조가 변경되었을 수 있습니다.");
+    const title = await p.title().catch(() => "");
+    const url = p.url();
+    const bodyText = await p.locator("body").innerText().catch(() => "");
+    const diagnostic = bodyText.replace(/\s+/g, " ").trim().slice(0, 300);
+    throw new Error(
+      `나무위키 메인 페이지에 검색창이 렌더링되지 않았습니다. ` +
+      `URL=${url}, TITLE=${title}, PAGE=${diagnostic || "본문 없음"}`
+    );
   }
 
-  await input.fill(keyword);
-  await input.press("Enter");
-  await p.waitForTimeout(900);
+  setProgress(
+    "문서 검색",
+    `검색어 입력 ${keywordIndex}/${keywordTotal}`,
+    base + 1,
+    `검색창에 '${keyword}' 입력`
+  );
 
-  setProgress("문서 검색", `검색결과 분석 ${keywordIndex}/${keywordTotal}`, base + 2, `검색 결과 링크를 추출하고 광고/외부 링크를 제외하는 중: ${keyword}`);
-  await p.locator('a[href^="/w/"]').first().waitFor({ state: "visible", timeout: 15000 });
+  await input.fill(keyword);
+
+  // 사용자가 확인한 실제 검색 버튼의 SVG path를 우선 클릭한다.
+  // 현재 버튼의 path d 값이 변경되더라도 aria/title/role 후보를 순차적으로 시도한다.
+  const searchButtonPath = 'path[d^="M438.6 278.6"]';
+  let clicked = false;
+
+  const buttonSelectors = [
+    `button:has(${searchButtonPath})`,
+    `[role="button"]:has(${searchButtonPath})`,
+    `a:has(${searchButtonPath})`,
+    'button[aria-label*="검색"]',
+    'button[title*="검색"]',
+    '[role="button"][aria-label*="검색"]',
+    '[role="button"][title*="검색"]'
+  ];
+
+  for (const selector of buttonSelectors) {
+    const button = p.locator(selector).first();
+    try {
+      await button.waitFor({ state: "visible", timeout: 2000 });
+      if (await button.isEnabled().catch(() => true)) {
+        await button.click({ timeout: 5000 });
+        clicked = true;
+        break;
+      }
+    } catch {}
+  }
+
+  // 버튼 구조가 div/svg로 되어 있는 경우 path 자체를 클릭한다.
+  if (!clicked) {
+    const pathLocator = p.locator(searchButtonPath).first();
+    try {
+      await pathLocator.waitFor({ state: "visible", timeout: 2000 });
+      await pathLocator.click({ timeout: 5000 });
+      clicked = true;
+    } catch {}
+  }
+
+  // 최후의 fallback: 검색창 Enter.
+  if (!clicked) {
+    await input.press("Enter");
+  }
+
+  // 검색 결과 SPA 렌더링 대기.
+  await p.waitForTimeout(1200);
+
+  setProgress(
+    "문서 검색",
+    `검색결과 분석 ${keywordIndex}/${keywordTotal}`,
+    base + 2,
+    `검색 결과 링크를 추출하고 광고/외부 링크를 제외하는 중: ${keyword}`
+  );
+
+  try {
+    await p.locator('a[href^="/w/"]').first().waitFor({
+      state: "visible",
+      timeout: 15000
+    });
+  } catch {
+    // 검색 결과 링크가 SPA 내부 구조로 늦게 생성될 수 있어 한 번 더 기다린다.
+    await p.waitForTimeout(2500);
+  }
 
   let links = await getSearchLinks(p);
   const needle = String(topic || "").trim().toLowerCase();
@@ -403,10 +495,40 @@ async function searchNamu(keyword, topic, keywordIndex, keywordTotal) {
   });
 
   if (!candidates.length && needle) {
-    setProgress("문서 검색", `주제 재검색 ${keywordIndex}/${keywordTotal}`, base + 4, `주제 포함 결과가 없어 '${keyword} ${topic}'으로 다시 찾는 중`);
+    setProgress(
+      "문서 검색",
+      `주제 재검색 ${keywordIndex}/${keywordTotal}`,
+      base + 4,
+      `주제 포함 결과가 없어 '${keyword} ${topic}'으로 다시 찾는 중`
+    );
+
     await input.fill(`${keyword} ${topic}`);
-    await input.press("Enter");
-    await p.waitForTimeout(900);
+
+    let clickedAgain = false;
+    for (const selector of buttonSelectors) {
+      const button = p.locator(selector).first();
+      try {
+        await button.waitFor({ state: "visible", timeout: 1500 });
+        if (await button.isEnabled().catch(() => true)) {
+          await button.click({ timeout: 4000 });
+          clickedAgain = true;
+          break;
+        }
+      } catch {}
+    }
+
+    if (!clickedAgain) {
+      const pathLocator = p.locator(searchButtonPath).first();
+      try {
+        await pathLocator.waitFor({ state: "visible", timeout: 1500 });
+        await pathLocator.click({ timeout: 4000 });
+        clickedAgain = true;
+      } catch {}
+    }
+
+    if (!clickedAgain) await input.press("Enter");
+    await p.waitForTimeout(1200);
+
     const more = await getSearchLinks(p);
     candidates = more.filter(x => {
       const text = (x.text + " " + x.title).toLowerCase();
@@ -415,10 +537,14 @@ async function searchNamu(keyword, topic, keywordIndex, keywordTotal) {
   }
 
   if (!candidates.length) {
-    candidates = links.filter(x => (x.text + " " + x.title).toLowerCase().includes(key));
+    candidates = links.filter(x =>
+      (x.text + " " + x.title).toLowerCase().includes(key)
+    );
   }
 
-  if (!candidates.length) throw new Error(`'${keyword}' 검색 결과를 찾지 못했습니다.`);
+  if (!candidates.length) {
+    throw new Error(`'${keyword}' 검색 결과를 찾지 못했습니다.`);
+  }
 
   candidates.sort((a, b) => {
     const score = x => {
@@ -434,7 +560,14 @@ async function searchNamu(keyword, topic, keywordIndex, keywordTotal) {
 
   const chosen = candidates[0];
   const url = new URL(chosen.href, "https://namu.wiki").href;
-  setProgress("문서 검색", `문서 선택 ${keywordIndex}/${keywordTotal}`, base + 5, `선택 문서: ${chosen.text}`);
+
+  setProgress(
+    "문서 검색",
+    `문서 선택 ${keywordIndex}/${keywordTotal}`,
+    base + 5,
+    `선택 문서: ${chosen.text}`
+  );
+
   return { chosen, url };
 }
 
@@ -761,7 +894,7 @@ function attachImages(data, docs) {
    API
 ========================================================= */
 app.get("/api/health", (req, res) => {
-  res.json({ ok: true, apiKeyConfigured: !!process.env.OPENAI_API_KEY, model: MODEL, headless: true, adFilter: true });
+  res.json({ ok: true, apiKeyConfigured: !!process.env.OPENAI_API_KEY, model: MODEL, headless: true, browser: "headless", adFilter: true });
 });
 
 app.get("/api/progress", (req, res) => {
