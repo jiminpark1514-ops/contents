@@ -9,7 +9,7 @@ import { fileURLToPath } from "url";
 
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
-const MODEL = process.env.OPENAI_MODEL || "gpt-5.6";
+const MODEL = process.env.OPENAI_MODEL || "gpt-4o";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const IMAGE_DIR = path.join(__dirname, "collected_images");
@@ -370,7 +370,6 @@ async function searchNamu(keyword, topic, keywordIndex, keywordTotal) {
   ) {
     console.log("[안내] Cloudflare 보안 검증 통과 감지. 실제 문서 로딩을 대기합니다.");
     
-    // 검증 후 실제 나무위키 문서 본문 영역이 나타날 때까지 최대 15초간 대기
     try {
       await p.waitForSelector("main, article, div[class*='wiki-content']", { timeout: 15000 });
     } catch {
@@ -843,22 +842,22 @@ ${research}`;
     setProgress("AI 작성", "OpenAI 요청 중", 82, "구조화된 JSON 형식으로 블로그/쇼츠를 작성하고 있습니다.");
 
     const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY, timeout: 120000, maxRetries: 0 });
-    const response = await client.responses.create({
+    const response = await client.chat.completions.create({
       model: MODEL,
-      input: prompt,
-      text: {
-        format: {
-          type: "json_schema",
+      messages: [{ role: "user", content: prompt }],
+      response_format: {
+        type: "json_schema",
+        json_schema: {
           name: "content_maker_result",
           strict: true,
           schema: contentSchema
         }
       },
-      max_output_tokens: 12000
+      max_tokens: 12000
     });
 
     setProgress("AI 작성", "AI 응답 수신", 91, "AI 응답을 받았습니다. JSON 구조를 검증하고 이미지 위치를 연결합니다.");
-    const raw = (response.output_text || "").trim();
+    const raw = (response.choices[0]?.message?.content || "").trim();
     if (!raw) throw new Error("AI가 빈 결과를 반환했습니다.");
 
     let data;
